@@ -154,7 +154,7 @@ class MCTS {
   private c_puct: number = 1.5; // 探索パラメータ
   private maxSimulations: number;
 
-  constructor(maxSimulations: number = 100) {
+  constructor(maxSimulations: number = 30) {
     this.nn = new NeuralNetwork();
     this.maxSimulations = maxSimulations;
   }
@@ -281,7 +281,7 @@ class MCTS {
   private simulate(state: GameState, player: Player): number {
     let currentState = { ...state };
     let depth = 0;
-    const maxDepth = 100;
+    const maxDepth = 30;
 
     while (!currentState.gameOver && depth < maxDepth) {
       const moves = this.getLegalMoves(currentState);
@@ -407,7 +407,7 @@ class MCTS {
 
 // ===== 公開API =====
 
-const mcts = new MCTS(150); // シミュレーション回数
+const mcts = new MCTS(32); // ブラウザ向け: 1手あたり32シミュレーション
 
 export function getMCTSMove(state: GameState): { from?: Position; to: Position } | null {
   return mcts.search(state);
