@@ -352,6 +352,7 @@ function getAIPlacement(state: GameState): Position[] {
   let currentBoard = state.board.map(row => [...row]);
   const aiPlayer = state.currentPlayer;
   const center = Math.floor(BOARD_SIZE / 2);
+  const opponent: Player = aiPlayer === 'player1' ? 'player2' : 'player1';
 
   for (let i = 0; i < 2; i++) {
     let bestPos: Position | null = null;
@@ -364,7 +365,48 @@ function getAIPlacement(state: GameState): Position[] {
 
         const testBoard = currentBoard.map(row => [...row]);
         testBoard[r][c] = aiPlayer;
-        const score = evaluate(testBoard, aiPlayer);
+        
+        // 基本評価
+        let score = evaluate(testBoard, aiPlayer);
+        
+        // 追加の戦略的評価
+        const distToCenter = Math.abs(r - center) + Math.abs(c - center);
+        
+        // 中央に近いほど良い（序盤は特に）
+        if (state.totalPlaced[aiPlayer] < 6) {
+          score += (6 - distToCenter) * 15;
+        }
+        
+        // 相手の駒を挟める可能性を評価
+        const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
+        for (const dir of dirs) {
+          const ar = r + dir.dr;
+          const ac = c + dir.dc;
+          if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE) {
+            if (currentBoard[ar][ac] === opponent) {
+              const br = ar + dir.dr;
+              const bc = ac + dir.dc;
+              if (br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE) {
+                if (currentBoard[br][bc] === aiPlayer) {
+                  score += 100; // 挟める！
+                } else if (currentBoard[br][bc] === null) {
+                  score += 30; // 挟める可能性
+                }
+              }
+            }
+          }
+        }
+        
+        // 連携ボーナス
+        for (const dir of dirs) {
+          const ar = r + dir.dr;
+          const ac = c + dir.dc;
+          if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE) {
+            if (currentBoard[ar][ac] === aiPlayer) {
+              score += 20;
+            }
+          }
+        }
 
         if (score > bestScore) {
           bestScore = score;
@@ -382,7 +424,7 @@ function getAIPlacement(state: GameState): Position[] {
   return placements;
 }
 
-function getAIMove(state: GameState, depth: number = 4): { from: Position; to: Position } | null {
+function getAIMove(state: GameState, depth: number = 5): { from: Position; to: Position } | null {
   const aiPlayer = state.currentPlayer;
   const center = Math.floor(BOARD_SIZE / 2);
   
