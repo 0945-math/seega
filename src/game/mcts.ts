@@ -406,14 +406,67 @@ class MCTS {
 }
 
 // ===== 公開API =====
+// ブラウザでは「強いが長考するAI」より、必ず短時間で応答するAIを優先する。
+// MCTS本体は研究用として残し、実戦APIでは浅い1手先評価だけを使う。
 
-const mcts = new MCTS(32); // ブラウザ向け: 1手あたり32シミュレーション
+function fastMove(state: GameState): { from?: Position; to: Position } | null {
+  if (state.phase === 'placing') {
+    let best: Position | null = null;
+    let bestScore = -Infinity;
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (state.board[r][c] !== null || (r === CENTER && c === CENTER)) continue;
+        const b = state.board.map(row => [...row]);
+        b[r][c] = state.currentPlayer;
+        const score = countPieces(b, state.currentPlayer) * 10
+          + (4 - Math.abs(r - CENTER) - Math.abs(c - CENTER));
+        if (score > bestScore) { bestScore = score; best = { row: r, col: c }; }
+      }
+    }
+    return best ? { to: best } : null;
+  }
+
+  const first = isFirstMove(state);
+  let best: { from: Position; to: Position } | null = null;
+  let bestScore = -Infinity;
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (state.board[r][c] !== state.currentPlayer) continue;
+      const from = { row: r, col: c };
+      for (const to of getValidMoves(state.board, from)) {
+        if (first && !(to.row === CENTER && to.col === CENTER)) continue;
+
+        const b = state.board.map(row => [...row]);
+        b[from.row][from.col] = null;
+        b[to.row][to.col] = state.currentPlayer;
+
+        const captures = getCaptures(b, to, state.currentPlayer);
+        let score = captures.length * 1000;
+        score += (4 - Math.abs(to.row - CENTER) - Math.abs(to.col - CENTER)) * 2;
+
+        if (captures.length > 0) {
+          for (const cap of captures) b[cap.row][cap.col] = null;
+          const opponent = state.currentPlayer === 'player1' ? 'player2' : 'player1';
+          if (countPieces(b, opponent) <= 1) score += 100000;
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          best = { from, to };
+        }
+      }
+    }
+  }
+
+  return best;
+}
 
 export function getMCTSMove(state: GameState): { from?: Position; to: Position } | null {
-  return mcts.search(state);
+  return fastMove(state);
 }
 
 export function getMCTSPlacement(state: GameState): Position {
-  const move = mcts.search(state);
+  const move = fastMove(state);
   return move ? move.to : { row: 0, col: 0 };
 }
