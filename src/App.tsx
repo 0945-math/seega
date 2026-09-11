@@ -20,24 +20,43 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (state.gameOver || state.currentPlayer !== 'player2' || thinking) return;
+    if (state.gameOver || state.currentPlayer !== 'player2') return;
+
+    let cancelled = false;
     setThinking(true);
-    const timer = setTimeout(() => {
-      let s = state;
-      const first = isFirstMove(s);
-      const move = getMCTSMove(s);
-      if (move?.from) {
-        s = movePiece(s, move.from, move.to);
-        if (!s.gameOver && s.currentPlayer === 'player2' && s.canCapture) {
-          const next = getMCTSMove(s);
-          if (next?.from) s = movePiece(s, next.from, next.to);
+
+    const timer = window.setTimeout(() => {
+      try {
+        if (cancelled) return;
+
+        let s = state;
+        // 連続キャプチャはルール上同一手番なので継続する。
+        // ただし盤面上の相手駒数には上限があるため、上限を明示して
+        // UI側で無限ループを起こさない。
+        for (let i = 0; i < 12 && !s.gameOver && s.currentPlayer === 'player2'; i++) {
+          const move = getMCTSMove(s);
+          if (!move?.from) break;
+
+          const next = movePiece(s, move.from, move.to);
+          if (next === s) break;
+          s = next;
+
+          if (!s.canCapture) break;
         }
-        setState(s);
+
+        if (!cancelled) setState(s);
+      } catch (error) {
+        console.error('AI move failed:', error);
+      } finally {
+        if (!cancelled) setThinking(false);
       }
-      setThinking(false);
     }, 80);
-    return () => clearTimeout(timer);
-  }, [state, thinking]);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [state.gameOver, state.currentPlayer]);
 
   const choose = (pos: Position) => {
     if (thinking || state.gameOver || state.currentPlayer !== 'player1') return;
