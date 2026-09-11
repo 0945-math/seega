@@ -23,6 +23,7 @@ export interface GameState {
   board: Board;
   currentPlayer: Player;
   phase: Phase;
+  piecesPlacedThisTurn: number; // このターンで置いた駒の数（0, 1, 2）
   totalPlaced: { player1: number; player2: number };
   selectedPos: Position | null;
   validMoves: Position[];
@@ -45,13 +46,14 @@ export function createInitialState(): GameState {
     board,
     currentPlayer: 'player1',
     phase: 'placing',
+    piecesPlacedThisTurn: 0,
     totalPlaced: { player1: 0, player2: 0 },
     selectedPos: null,
     validMoves: [],
     capturedBy: { player1: 0, player2: 0 },
     gameOver: false,
     winner: null,
-    message: '配置フェーズ：あなたの駒を1個置いてください',
+    message: '配置フェーズ：あなたの駒を2個置いてください',
     canCapture: false,
     moveHistory: [],
     lastMove: null,
@@ -79,8 +81,8 @@ export function placePiece(state: GameState, pos: Position): GameState {
 
   const newTotalPlaced = { ...state.totalPlaced };
   newTotalPlaced[state.currentPlayer]++;
+  const newPlacedThisTurn = state.piecesPlacedThisTurn + 1;
 
-  // 1個ずつ交互に配置
   const nextPlayer: Player = state.currentPlayer === 'player1' ? 'player2' : 'player1';
   const allPlaced = newTotalPlaced.player1 >= PIECES_PER_PLAYER && newTotalPlaced.player2 >= PIECES_PER_PLAYER;
 
@@ -90,9 +92,16 @@ export function placePiece(state: GameState, pos: Position): GameState {
   if (allPlaced) {
     newPhase = 'moving';
     newMessage = '移動フェーズ開始！先手の最初の一手は中央へ';
+  } else if (newPlacedThisTurn >= 2) {
+    // 2個置き終わったら相手ターン
+    newMessage = `${nextPlayer === 'player1' ? 'あなた' : 'AI'}の駒を2個置いてください`;
   } else {
-    newMessage = `${nextPlayer === 'player1' ? 'あなた' : 'AI'}の駒を1個置いてください`;
+    // あと1個
+    newMessage = `あと1個置いてください`;
   }
+
+  // 2個置いたら相手ターン、または全部置き終わったら移動フェーズへ
+  const shouldSwitchTurn = newPlacedThisTurn >= 2 || allPlaced;
 
   const newMoveHistory = [...state.moveHistory, {
     type: 'place' as const,
@@ -104,7 +113,8 @@ export function placePiece(state: GameState, pos: Position): GameState {
     ...state,
     board: newBoard,
     totalPlaced: newTotalPlaced,
-    currentPlayer: nextPlayer, // 常に相手プレイヤーに交代
+    piecesPlacedThisTurn: shouldSwitchTurn ? 0 : newPlacedThisTurn,
+    currentPlayer: shouldSwitchTurn ? nextPlayer : state.currentPlayer,
     phase: newPhase,
     message: newMessage || state.message,
     selectedPos: null,

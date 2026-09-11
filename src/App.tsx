@@ -119,7 +119,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: '配置フェーズ',
-    description: 'まず、交互に1個ずつ駒を配置します。中央のマスは配置できません。各12個ずつ、合計24個を配置します。',
+    description: 'まず、交互に2個ずつ駒を配置します。中央のマスは配置できません。各12個ずつ、合計24個を配置します。',
     highlight: 'placing',
   },
   {
@@ -242,17 +242,30 @@ function App() {
   useEffect(() => {
     if (gameState.gameOver) return;
     if (gameState.currentPlayer !== aiSide) return;
+    // 配置フェーズで1個だけ置いた状態（piecesPlacedThisTurn === 1）はAIのターンではない
+    if (gameState.phase === 'placing' && gameState.piecesPlacedThisTurn === 1) return;
 
     setIsThinking(true);
     const timer = setTimeout(() => {
       const state = gameStateRef.current;
 
       if (state.phase === 'placing') {
-        const pos = getMCTSPlacement(state);
-        const newState = placePiece(state, pos);
+        // AIは2個ずつ配置
+        let newState = state;
+        const positions: Position[] = [];
+        
+        for (let i = 0; i < 2; i++) {
+          const pos = getMCTSPlacement(newState);
+          positions.push(pos);
+          newState = placePiece(newState, pos);
+          
+          // 2個置き終わる前に全部埋まった場合
+          if (newState.phase === 'moving') break;
+        }
+        
         newState.message = 'あなたの番です';
         setGameState(newState);
-        triggerAnimation([pos]);
+        triggerAnimation(positions);
         if (soundEnabled) soundManager.playPlace();
       } else if (state.phase === 'moving') {
         const aiMove = getMCTSMove(state);
@@ -291,7 +304,7 @@ function App() {
     }, 400 + Math.random() * 300);
 
     return () => clearTimeout(timer);
-  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
+  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, gameState.piecesPlacedThisTurn, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
 
   // ゲーム終了時のサウンド
   useEffect(() => {
@@ -379,6 +392,10 @@ function App() {
         // 配置後のメッセージ更新
         if (newState.phase === 'moving') {
           newState.message = '移動フェーズ開始！あなたの最初の一手は中央へ';
+          setGameState(newState);
+        } else if (newState.piecesPlacedThisTurn === 1) {
+          // 1個目を書けた後
+          newState.message = 'あと1個置いてください';
           setGameState(newState);
         }
       } else {
@@ -620,11 +637,19 @@ function App() {
             <span>配置進捗（あなた/AI）</span>
             <span>{gameState.totalPlaced.player1}/{PIECES_PER_PLAYER} | {gameState.totalPlaced.player2}/{PIECES_PER_PLAYER}</span>
           </div>
-          <div className="h-1.5 bg-amber-900/50 rounded-full overflow-hidden border border-amber-700/30">
-            <div
-              className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500 rounded-full"
-              style={{ width: `${(gameState.totalPlaced.player1 / PIECES_PER_PLAYER) * 100}%` }}
-            ></div>
+          <div className="flex gap-1 h-1.5">
+            <div className="flex-1 bg-amber-900/50 rounded-full overflow-hidden border border-amber-700/30">
+              <div
+                className="h-full bg-gradient-to-r from-white to-gray-300 transition-all duration-500 rounded-full"
+                style={{ width: `${(gameState.totalPlaced.player1 / PIECES_PER_PLAYER) * 100}%` }}
+              ></div>
+            </div>
+            <div className="flex-1 bg-amber-900/50 rounded-full overflow-hidden border border-amber-700/30">
+              <div
+                className="h-full bg-gradient-to-r from-gray-600 to-gray-800 transition-all duration-500 rounded-full"
+                style={{ width: `${(gameState.totalPlaced.player2 / PIECES_PER_PLAYER) * 100}%` }}
+              ></div>
+            </div>
           </div>
         </div>
       )}
@@ -938,7 +963,7 @@ function App() {
               <span className="text-amber-400 font-bold min-w-[20px]">①</span>
               <div>
                 <strong className="text-amber-300">配置フェーズ</strong>
-                <p className="text-amber-200/70 mt-0.5">交互に1個ずつ駒を置く（中央以外、各12個ずつ）</p>
+                <p className="text-amber-200/70 mt-0.5">交互に2個ずつ駒を置く（中央以外、各12個ずつ）</p>
               </div>
             </div>
             <div className="flex gap-2">

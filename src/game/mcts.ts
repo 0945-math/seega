@@ -183,7 +183,7 @@ class MCTS {
     const player = state.currentPlayer;
 
     if (state.phase === 'placing') {
-      // 配置フェーズ
+      // 配置フェーズ - 2個ずつ配置
       for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
           if (state.board[r][c] === null && !(r === CENTER && c === CENTER)) {
@@ -217,12 +217,19 @@ class MCTS {
     const player = state.currentPlayer;
 
     if (!move.from) {
-      // 配置
+      // 配置 - 2個ずつ
       newState.board[move.to.row][move.to.col] = player;
       newState.totalPlaced = { ...state.totalPlaced };
       newState.totalPlaced[player]++;
-      newState.currentPlayer = player === 'player1' ? 'player2' : 'player1';
+      newState.piecesPlacedThisTurn = (state.piecesPlacedThisTurn || 0) + 1;
       
+      // 2個置いたら相手ターン
+      if (newState.piecesPlacedThisTurn >= 2) {
+        newState.currentPlayer = player === 'player1' ? 'player2' : 'player1';
+        newState.piecesPlacedThisTurn = 0;
+      }
+      
+      // 全部置き終わったら移動フェーズへ
       if (newState.totalPlaced.player1 >= PIECES_PER_PLAYER && newState.totalPlaced.player2 >= PIECES_PER_PLAYER) {
         newState.phase = 'moving';
       }
