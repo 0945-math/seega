@@ -28,10 +28,9 @@ export default function App() {
       const move = getMCTSMove(s);
       if (move?.from) {
         s = movePiece(s, move.from, move.to);
-        while (!s.gameOver && s.currentPlayer === 'player2' && s.canCapture) {
+        if (!s.gameOver && s.currentPlayer === 'player2' && s.canCapture) {
           const next = getMCTSMove(s);
-          if (!next?.from) break;
-          s = movePiece(s, next.from, next.to);
+          if (next?.from) s = movePiece(s, next.from, next.to);
         }
         setState(s);
       }
