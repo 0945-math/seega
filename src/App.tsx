@@ -36,7 +36,7 @@ export default function App() {
         setState(s);
       }
       setThinking(false);
-    }, 250);
+    }, 80);
     return () => clearTimeout(timer);
   }, [state, thinking]);
 
