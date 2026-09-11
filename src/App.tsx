@@ -43,13 +43,31 @@ export default function App() {
         return;
       }
 
-      const move = getAIMoveFast(current);
+      let move = getAIMoveFast(current);
+
+      // AI評価が手を返せない場合でも、合法手があるならターンを飛ばさない。
+      // 評価器の都合と「本当に動けない」を分離する。
+      if (!move?.from) {
+        outer:
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            if (current.board[r][c] !== 'player2') continue;
+            const from = { row: r, col: c };
+            const fallback = getValidMoves(current.board, from);
+            if (fallback.length) {
+              move = { from, to: fallback[0] };
+              break outer;
+            }
+          }
+        }
+      }
+
       if (!move?.from) {
         const finished = {
           ...current,
           currentPlayer: 'player1' as Player,
           canCapture: false,
-          message: 'あなたの番です',
+          message: 'AIは動けないため、あなたの番です',
         };
         setState(finished);
         aiTimerRef.current = null;
