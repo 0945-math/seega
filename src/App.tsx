@@ -3,14 +3,13 @@ import {
   GameState, Position, Player, PIECES_PER_PLAYER, createInitialState, getValidMoves,
   movePiece, isFirstMove, countPieces,
 } from './game/seega';
-import { getMCTSMove } from './game/mcts';
+import { getAIMoveFast } from './game/ai';
 
 const CENTER = 2;
 
 export default function App() {
   const [state, setState] = useState<GameState>(createInitialState());
   const [selected, setSelected] = useState<Position | null>(null);
-  const [thinking, setThinking] = useState(false);
   const [hint, setHint] = useState<{from?: Position; to: Position} | null>(null);
 
   const reset = () => {
@@ -22,20 +21,20 @@ export default function App() {
   const runAITurn = (start: GameState): GameState => {
     let s = start;
     for (let i = 0; i < PIECES_PER_PLAYER && !s.gameOver && s.currentPlayer === 'player2'; i++) {
-      const move = getMCTSMove(s);
+      const move = getAIMoveFast(s);
       if (!move?.from) {
         return { ...s, currentPlayer: 'player1', canCapture: false, message: 'あなたの番です' };
       }
-      s = movePiece(s, move.from, move.to);
+      const next = movePiece(s, move.from, move.to);
+      s = next;
       if (!s.canCapture) break;
     }
     return s;
   };
 
 
-
   const choose = (pos: Position) => {
-    if (thinking || state.gameOver || state.currentPlayer !== 'player1') return;
+    if (state.gameOver || state.currentPlayer !== 'player1') return;
     if (selected) {
       if (getValidMoves(state.board, selected).some(p => p.row === pos.row && p.col === pos.col) &&
           (!isFirstMove(state) || (pos.row === CENTER && pos.col === CENTER))) {
@@ -43,11 +42,7 @@ export default function App() {
         setSelected(null);
         setHint(null);
         if (afterPlayer.currentPlayer === 'player2' && !afterPlayer.gameOver) {
-          setThinking(true);
-          window.setTimeout(() => {
-            setState(runAITurn(afterPlayer));
-            setThinking(false);
-          }, 0);
+          setState(runAITurn(afterPlayer));
         } else {
           setState(afterPlayer);
         }
@@ -63,7 +58,7 @@ export default function App() {
 
   const showHint = () => {
     if (state.currentPlayer !== 'player1' || state.gameOver) return;
-    setHint(getMCTSMove(state));
+    setHint(getAIMoveFast(state));
   };
 
   const valid = selected ? getValidMoves(state.board, selected) : [];
@@ -85,7 +80,7 @@ export default function App() {
 
       <section className="w-full max-w-3xl mb-4 flex justify-between text-sm">
         <span>あなた: {p1} 個</span>
-        <span>{thinking ? 'AI思考中…' : state.gameOver ? (state.winner === 'player1' ? 'あなたの勝ち' : 'AIの勝ち') : state.message}</span>
+        <span>{state.gameOver ? (state.winner === 'player1' ? 'あなたの勝ち' : 'AIの勝ち') : state.message}</span>
         <span>AI: {p2} 個</span>
       </section>
 
