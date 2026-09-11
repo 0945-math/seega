@@ -79,7 +79,7 @@ export default function App() {
         setSelected(null);
         setHint(null);
         if (afterPlayer.currentPlayer === 'player2' && !afterPlayer.gameOver) {
-          setState(runAITurn(afterPlayer));
+          runAITurn(afterPlayer);
         } else {
           setState(afterPlayer);
         }
