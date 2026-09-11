@@ -89,7 +89,11 @@ export function placePiece(state: GameState, pos: Position): GameState {
 
 export function getValidMoves(board: Board, pos: Position): Position[] {
   const moves: Position[] = [];
-  for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+  for (const [dr, dc] of [
+    [-1,-1],[-1,0],[-1,1],
+    [0,-1],[0,1],
+    [1,-1],[1,0],[1,1],
+  ]) {
     const r = pos.row + dr, c = pos.col + dc;
     if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === null) moves.push({row:r,col:c});
   }
@@ -99,7 +103,11 @@ export function getValidMoves(board: Board, pos: Position): Position[] {
 export function getCaptures(board: Board, pos: Position, player: Player): Position[] {
   const captures: Position[] = [];
   const opponent = player === 'player1' ? 'player2' : 'player1';
-  for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+  for (const [dr, dc] of [
+    [-1,-1],[-1,0],[-1,1],
+    [0,-1],[0,1],
+    [1,-1],[1,0],[1,1],
+  ]) {
     const ar = pos.row + dr, ac = pos.col + dc;
     const br = pos.row + 2*dr, bc = pos.col + 2*dc;
     if (ar < 0 || ar >= BOARD_SIZE || ac < 0 || ac >= BOARD_SIZE ||
