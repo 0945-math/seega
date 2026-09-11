@@ -37,7 +37,16 @@ export interface GameState {
   capturedPositions: Position[];
 }
 
-const BOARD_SIZE = 5;
+export const BOARD_SIZES = {
+  small: { size: 3, pieces: 4 },
+  medium: { size: 5, pieces: 12 },
+  large: { size: 7, pieces: 24 },
+} as const;
+
+export type BoardSize = keyof typeof BOARD_SIZES;
+
+const DEFAULT_BOARD_SIZE = 5;
+const BOARD_SIZE = DEFAULT_BOARD_SIZE;
 export const PIECES_PER_PLAYER = 12;
 
 export function createInitialState(): GameState {
@@ -528,6 +537,38 @@ function minimax(board: Board, depth: number, alpha: number, beta: number, maxim
   }
 
   return bestEval;
+}
+
+// ヒント機能：プレイヤーへの最善手を提案
+export function getHint(state: GameState): { from?: Position; to: Position } | null {
+  if (state.phase === 'placing') {
+    // 配置フェーズでは、評価値最高的な位置を返す
+    const center = Math.floor(BOARD_SIZE / 2);
+    let bestPos: Position | null = null;
+    let bestScore = -Infinity;
+
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (state.board[r][c] !== null) continue;
+        if (r === center && c === center) continue;
+
+        const testBoard = state.board.map(row => [...row]);
+        testBoard[r][c] = state.currentPlayer;
+        const score = evaluate(testBoard, state.currentPlayer);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestPos = { row: r, col: c };
+        }
+      }
+    }
+
+    return bestPos ? { to: bestPos } : null;
+  } else if (state.phase === 'moving') {
+    // 移動フェーズでは、AIと同じロジックで最善手を計算
+    return getAIMove(state, 3); // ヒントは浅い探索で十分
+  }
+  return null;
 }
 
 export { getAIPlacement, getAIMove };

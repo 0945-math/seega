@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   GameState,
   Position,
@@ -12,11 +12,23 @@ import {
   getAIPlacement,
   getAIMove,
   isFirstMove,
+  getHint,
   PIECES_PER_PLAYER,
 } from './game/seega';
 
 const BOARD_SIZE = 5;
 const CENTER = Math.floor(BOARD_SIZE / 2);
+
+// パーティクルエフェクト
+interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  color: string;
+}
 
 // サウンドエフェクト
 class SoundManager {
@@ -67,6 +79,11 @@ class SoundManager {
     this.playTone(500, 0.05, 'sine', 0.1);
   }
 
+  playHint() {
+    this.playTone(660, 0.1, 'sine', 0.15);
+    setTimeout(() => this.playTone(880, 0.15, 'sine', 0.2), 100);
+  }
+
   playInvalid() {
     this.playTone(200, 0.1, 'square', 0.1);
   }
@@ -95,6 +112,35 @@ interface GameStats {
   fastestWin: number | null;
 }
 
+// チュートリアルステップ
+const TUTORIAL_STEPS = [
+  {
+    title: 'シーガへようこそ！',
+    description: '古代エジプトの戦略的ボードゲームを学びましょう。',
+    highlight: null,
+  },
+  {
+    title: '配置フェーズ',
+    description: 'まず、交互に2個ずつ駒を配置します。中央のマスは配置できません。',
+    highlight: 'placing',
+  },
+  {
+    title: '移動フェーズ',
+    description: '全駒を配置したら、移動フェーズに移ります。駒は上下左右に1マスだけ移動できます。',
+    highlight: 'moving',
+  },
+  {
+    title: '挟み取り',
+    description: '相手の駒を縦横に自分の駒で挟むと、その駒を取れます！',
+    highlight: 'capture',
+  },
+  {
+    title: '勝利条件',
+    description: '相手の駒を1個以下にしたら勝利です。戦略的に駒を配置して、挟み取りを狙いましょう！',
+    highlight: 'win',
+  },
+];
+
 function App() {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
   const [difficulty, setDifficulty] = useState<number>(2);
@@ -102,6 +148,11 @@ function App() {
   const [showRules, setShowRules] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [hint, setHint] = useState<{ from?: Position; to: Position } | null>(null);
+  const [history, setHistory] = useState<GameState[]>([]);
+  const [particles, setParticles] = useState<Particle[]>([]);
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [stats, setStats] = useState<GameStats>(() => {
@@ -112,6 +163,7 @@ function App() {
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
   const gameStartTime = useRef(Date.now());
+  const particleIdRef = useRef(0);
 
   const playerSide: Player = 'player1';
   const aiSide: Player = 'player2';
@@ -120,6 +172,44 @@ function App() {
   useEffect(() => {
     localStorage.setItem('seega-stats', JSON.stringify(stats));
   }, [stats]);
+
+  // パーティクルアニメーション
+  useEffect(() => {
+    if (particles.length === 0) return;
+
+    const interval = setInterval(() => {
+      setParticles(prev => 
+        prev
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx,
+            y: p.y + p.vy,
+            vy: p.vy + 0.5, // 重力
+            life: p.life - 1,
+          }))
+          .filter(p => p.life > 0)
+      );
+    }, 16);
+
+    return () => clearInterval(interval);
+  }, [particles.length]);
+
+  // パーティクルを生成
+  const spawnParticles = useCallback((x: number, y: number, color: string, count = 20) => {
+    const newParticles: Particle[] = [];
+    for (let i = 0; i < count; i++) {
+      newParticles.push({
+        id: particleIdRef.current++,
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 10,
+        vy: (Math.random() - 0.5) * 10 - 5,
+        life: 60,
+        color,
+      });
+    }
+    setParticles(prev => [...prev, ...newParticles]);
+  }, []);
 
   // ゲーム終了時の統計更新
   useEffect(() => {
@@ -132,8 +222,17 @@ function App() {
         totalCaptures: prev.totalCaptures + gameState.capturedBy.player1 + gameState.capturedBy.player2,
         fastestWin: gameState.winner === playerSide && (prev.fastestWin === null || duration < prev.fastestWin) ? duration : prev.fastestWin,
       }));
+
+      // 勝利/敗北パーティクル
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      if (gameState.winner === playerSide) {
+        spawnParticles(centerX, centerY, '#fbbf24', 50);
+        spawnParticles(centerX - 100, centerY, '#f59e0b', 30);
+        spawnParticles(centerX + 100, centerY, '#fcd34d', 30);
+      }
     }
-  }, [gameState.gameOver, gameState.winner, playerSide]);
+  }, [gameState.gameOver, gameState.winner, playerSide, spawnParticles]);
 
   const triggerAnimation = useCallback((positions: Position[]) => {
     const keys = new Set(positions.map(p => `${p.row}-${p.col}`));
@@ -218,19 +317,27 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (gameState.gameOver || isThinking || gameState.currentPlayer !== playerSide) return;
 
-      // ESCで選択解除
       if (e.key === 'Escape') {
         setGameState({ ...gameState, selectedPos: null, validMoves: [] });
+        setHint(null);
         return;
       }
 
-      // Rでリセット
       if (e.key === 'r' || e.key === 'R') {
         handleReset();
         return;
       }
 
-      // 矢印キーで選択中の駒を移動
+      if (e.key === 'h' || e.key === 'H') {
+        handleShowHint();
+        return;
+      }
+
+      if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        handleUndo();
+        return;
+      }
+
       if (gameState.selectedPos) {
         const dirMap: Record<string, Position> = {
           ArrowUp: { row: -1, col: 0 },
@@ -268,10 +375,12 @@ function App() {
 
     if (gameState.phase === 'placing') {
       if (canPlace(gameState, pos)) {
+        setHistory(prev => [...prev, gameState]);
         const newState = placePiece(gameState, pos);
         setGameState(newState);
         triggerAnimation([pos]);
         if (soundEnabled) soundManager.playPlace();
+        setHint(null);
       } else {
         if (soundEnabled) soundManager.playInvalid();
       }
@@ -285,6 +394,7 @@ function App() {
         if (gameState.selectedPos) {
           const isValid = gameState.validMoves.some(m => m.row === row && m.col === col);
           if (isValid) {
+            setHistory(prev => [...prev, gameState]);
             const newState = movePiece(gameState, gameState.selectedPos, pos);
             setGameState(newState);
             triggerAnimation([pos, ...newState.capturedPositions]);
@@ -292,6 +402,7 @@ function App() {
             if (newState.capturedPositions.length > 0 && soundEnabled) {
               setTimeout(() => soundManager.playCapture(), 200);
             }
+            setHint(null);
             return;
           }
         }
@@ -315,6 +426,7 @@ function App() {
               return;
             }
           }
+          setHistory(prev => [...prev, gameState]);
           const newState = movePiece(gameState, gameState.selectedPos, pos);
           setGameState(newState);
           triggerAnimation([pos, ...newState.capturedPositions]);
@@ -322,6 +434,7 @@ function App() {
           if (newState.capturedPositions.length > 0 && soundEnabled) {
             setTimeout(() => soundManager.playCapture(), 200);
           }
+          setHint(null);
           return;
         }
         if (clickedPiece === playerSide) {
@@ -349,8 +462,27 @@ function App() {
   const handleReset = useCallback(() => {
     setGameState(createInitialState());
     setIsThinking(false);
+    setHistory([]);
+    setHint(null);
     gameStartTime.current = Date.now();
   }, []);
+
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+    const prevState = history[history.length - 1];
+    setGameState(prevState);
+    setHistory(prev => prev.slice(0, -1));
+    setHint(null);
+  }, [history]);
+
+  const handleShowHint = useCallback(() => {
+    if (gameState.gameOver || isThinking || gameState.currentPlayer !== playerSide) return;
+    const hintMove = getHint(gameState);
+    if (hintMove) {
+      setHint(hintMove);
+      if (soundEnabled) soundManager.playHint();
+    }
+  }, [gameState, isThinking, playerSide, soundEnabled]);
 
   const p1Count = countPieces(gameState.board, 'player1');
   const p2Count = countPieces(gameState.board, 'player2');
@@ -366,6 +498,23 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0a05] via-[#1a0f08] to-[#0f0a05] flex flex-col items-center py-4 px-2 relative overflow-hidden">
+      {/* パーティクルエフェクト */}
+      <div className="fixed inset-0 pointer-events-none z-50">
+        {particles.map(p => (
+          <div
+            key={p.id}
+            className="absolute w-2 h-2 rounded-full"
+            style={{
+              left: p.x,
+              top: p.y,
+              backgroundColor: p.color,
+              opacity: p.life / 60,
+              transform: `scale(${p.life / 60})`,
+            }}
+          />
+        ))}
+      </div>
+
       {/* 背景装飾 */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_rgba(251,191,36,0.05)_0%,_transparent_50%)]"></div>
@@ -543,6 +692,7 @@ function App() {
               const canPlaceHere = gameState.phase === 'placing' && gameState.currentPlayer === playerSide && canPlace(gameState, { row, col });
               const isLastMove = gameState.lastMove?.to.row === row && gameState.lastMove?.to.col === col;
               const isAnimating = animatingCells.has(`${row}-${col}`);
+              const isHint = hint && ((hint.to.row === row && hint.to.col === col) || (hint.from && hint.from.row === row && hint.from.col === col));
 
               return (
                 <div
@@ -560,7 +710,8 @@ function App() {
                     ${isValidMove && cell ? 'bg-red-500/30 hover:bg-red-500/40 shadow-inner shadow-red-400/30' : ''}
                     ${canPlaceHere && !cell ? 'bg-blue-400/20 hover:bg-blue-400/35 shadow-inner shadow-blue-400/20' : ''}
                     ${isLastMove && !isSelected ? 'ring-1 ring-amber-400/50 bg-amber-500/20' : ''}
-                    ${!cell && !isValidMove && !canPlaceHere ? 'hover:bg-amber-700/30' : ''}
+                    ${isHint ? 'ring-2 ring-cyan-400 bg-cyan-500/30 animate-pulse shadow-lg shadow-cyan-400/50' : ''}
+                    ${!cell && !isValidMove && !canPlaceHere && !isHint ? 'hover:bg-amber-700/30' : ''}
                   `}
                   role="button"
                   aria-label={`セル ${posToLabel({ row, col })}${cell ? ` - ${cell === 'player1' ? 'あなたの駒' : 'AIの駒'}` : ''}`}
@@ -651,7 +802,23 @@ function App() {
           🔄 新規
         </button>
         <button
-          onClick={() => { setShowHistory(!showHistory); setShowRules(false); setShowStats(false); }}
+          onClick={handleUndo}
+          disabled={history.length === 0}
+          className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-500 hover:to-blue-600 font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="一手戻す"
+        >
+          ↩️ 戻す
+        </button>
+        <button
+          onClick={handleShowHint}
+          disabled={gameState.gameOver || isThinking || gameState.currentPlayer !== playerSide}
+          className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-cyan-700 text-white rounded-lg hover:from-cyan-500 hover:to-cyan-600 font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label="ヒントを表示"
+        >
+          💡 ヒント
+        </button>
+        <button
+          onClick={() => { setShowHistory(!showHistory); setShowRules(false); setShowStats(false); setShowTutorial(false); }}
           className={`px-4 py-2 rounded-lg font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm ${
             showHistory
               ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-white'
@@ -662,7 +829,7 @@ function App() {
           📜 棋譜
         </button>
         <button
-          onClick={() => { setShowRules(!showRules); setShowHistory(false); setShowStats(false); }}
+          onClick={() => { setShowRules(!showRules); setShowHistory(false); setShowStats(false); setShowTutorial(false); }}
           className={`px-4 py-2 rounded-lg font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm ${
             showRules
               ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white'
@@ -673,7 +840,7 @@ function App() {
           📖 ルール
         </button>
         <button
-          onClick={() => { setShowStats(!showStats); setShowHistory(false); setShowRules(false); }}
+          onClick={() => { setShowStats(!showStats); setShowHistory(false); setShowRules(false); setShowTutorial(false); }}
           className={`px-4 py-2 rounded-lg font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm ${
             showStats
               ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white'
@@ -683,7 +850,52 @@ function App() {
         >
           📊 統計
         </button>
+        <button
+          onClick={() => { setShowTutorial(!showTutorial); setTutorialStep(0); setShowHistory(false); setShowRules(false); setShowStats(false); }}
+          className={`px-4 py-2 rounded-lg font-medium shadow-lg transition-all hover:scale-105 active:scale-95 text-sm ${
+            showTutorial
+              ? 'bg-gradient-to-r from-green-600 to-green-700 text-white'
+              : 'bg-gradient-to-r from-green-700 to-green-800 text-green-200 hover:from-green-600 hover:to-green-700'
+          }`}
+          aria-label="チュートリアルを表示"
+        >
+          🎓 チュートリアル
+        </button>
       </div>
+
+      {/* チュートリアルパネル */}
+      {showTutorial && (
+        <div className="relative z-10 mt-3 w-full max-w-sm bg-gradient-to-br from-green-900/90 to-green-950/90 rounded-xl border border-green-700/50 p-5 animate-fade-in">
+          <h3 className="text-sm font-bold text-green-200 mb-3 flex items-center gap-2">
+            <span>🎓</span> チュートリアル ({tutorialStep + 1}/{TUTORIAL_STEPS.length})
+          </h3>
+          <div className="mb-4">
+            <h4 className="text-base font-bold text-green-100 mb-2">{TUTORIAL_STEPS[tutorialStep].title}</h4>
+            <p className="text-sm text-green-200/90">{TUTORIAL_STEPS[tutorialStep].description}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTutorialStep(Math.max(0, tutorialStep - 1))}
+              disabled={tutorialStep === 0}
+              className="flex-1 px-3 py-2 bg-green-800/50 text-green-200 rounded-lg hover:bg-green-700/50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ← 前へ
+            </button>
+            <button
+              onClick={() => {
+                if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+                  setTutorialStep(tutorialStep + 1);
+                } else {
+                  setShowTutorial(false);
+                }
+              }}
+              className="flex-1 px-3 py-2 bg-green-600/50 text-green-100 rounded-lg hover:bg-green-500/50 text-sm font-medium"
+            >
+              {tutorialStep < TUTORIAL_STEPS.length - 1 ? '次へ →' : '完了 ✓'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 棋譜パネル */}
       {showHistory && (
@@ -868,7 +1080,7 @@ function App() {
 
       {/* キーボードショートカット案内 */}
       <div className="relative z-10 mt-4 text-[10px] text-amber-400/40 text-center">
-        <p>ESC: 選択解除 | R: リセット | 矢印キー: 駒を移動</p>
+        <p>ESC: 選択解除 | R: リセット | H: ヒント | Ctrl+Z: 戻す | 矢印キー: 駒を移動</p>
       </div>
     </div>
   );
