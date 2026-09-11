@@ -9,12 +9,10 @@ import {
   getValidMoves,
   movePiece,
   countPieces,
-  getAIPlacement,
-  getAIMove,
   isFirstMove,
-  getHint,
   PIECES_PER_PLAYER,
 } from './game/seega';
+import { getMCTSMove, getMCTSPlacement } from './game/mcts';
 
 const BOARD_SIZE = 5;
 const CENTER = Math.floor(BOARD_SIZE / 2);
@@ -250,16 +248,16 @@ function App() {
       const state = gameStateRef.current;
 
       if (state.phase === 'placing') {
-        const pos = getAIPlacement(state);
+        const pos = getMCTSPlacement(state);
         const newState = placePiece(state, pos);
         newState.message = 'あなたの番です';
         setGameState(newState);
         triggerAnimation([pos]);
         if (soundEnabled) soundManager.playPlace();
       } else if (state.phase === 'moving') {
-        const aiMove = getAIMove(state, difficulty);
+        const aiMove = getMCTSMove(state);
         if (aiMove) {
-          let newState = movePiece(state, aiMove.from, aiMove.to);
+          let newState = movePiece(state, aiMove.from!, aiMove.to);
           triggerAnimation([aiMove.to, ...newState.capturedPositions]);
           if (soundEnabled) soundManager.playMove();
 
@@ -269,9 +267,9 @@ function App() {
 
           let captureCount = 0;
           while (newState.canCapture && newState.currentPlayer === aiSide && !newState.gameOver && captureCount < 5) {
-            const nextMove = getAIMove(newState, difficulty);
+            const nextMove = getMCTSMove(newState);
             if (nextMove) {
-              newState = movePiece(newState, nextMove.from, nextMove.to);
+              newState = movePiece(newState, nextMove.from!, nextMove.to);
               triggerAnimation([nextMove.to, ...newState.capturedPositions]);
               if (soundEnabled) soundManager.playMove();
               if (newState.capturedPositions.length > 0 && soundEnabled) {
@@ -479,7 +477,7 @@ function App() {
 
   const handleShowHint = useCallback(() => {
     if (gameState.gameOver || isThinking || gameState.currentPlayer !== playerSide) return;
-    const hintMove = getHint(gameState);
+    const hintMove = getMCTSMove(gameState);
     if (hintMove) {
       setHint(hintMove);
       if (soundEnabled) soundManager.playHint();
