@@ -121,7 +121,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: '配置フェーズ',
-    description: 'まず、交互に2個ずつ駒を配置します。中央のマスは配置できません。',
+    description: 'まず、交互に1個ずつ駒を配置します。中央のマスは配置できません。各12個ずつ、合計24個を配置します。',
     highlight: 'placing',
   },
   {
@@ -244,21 +244,17 @@ function App() {
   useEffect(() => {
     if (gameState.gameOver) return;
     if (gameState.currentPlayer !== aiSide) return;
-    if (gameState.phase === 'placing' && gameState.piecesPlacedThisTurn > 0) return;
 
     setIsThinking(true);
     const timer = setTimeout(() => {
       const state = gameStateRef.current;
 
       if (state.phase === 'placing') {
-        const placements = getAIPlacement(state);
-        let newState = state;
-        for (const pos of placements) {
-          newState = placePiece(newState, pos);
-        }
+        const pos = getAIPlacement(state);
+        const newState = placePiece(state, pos);
         newState.message = 'あなたの番です';
         setGameState(newState);
-        triggerAnimation(placements);
+        triggerAnimation([pos]);
         if (soundEnabled) soundManager.playPlace();
       } else if (state.phase === 'moving') {
         const aiMove = getAIMove(state, difficulty);
@@ -297,7 +293,7 @@ function App() {
     }, 400 + Math.random() * 300);
 
     return () => clearTimeout(timer);
-  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, gameState.piecesPlacedThisTurn, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
+  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
 
   // ゲーム終了時のサウンド
   useEffect(() => {
@@ -381,6 +377,12 @@ function App() {
         triggerAnimation([pos]);
         if (soundEnabled) soundManager.playPlace();
         setHint(null);
+        
+        // 配置後のメッセージ更新
+        if (newState.phase === 'moving') {
+          newState.message = '移動フェーズ開始！あなたの最初の一手は中央へ';
+          setGameState(newState);
+        }
       } else {
         if (soundEnabled) soundManager.playInvalid();
       }
@@ -486,7 +488,6 @@ function App() {
 
   const p1Count = countPieces(gameState.board, 'player1');
   const p2Count = countPieces(gameState.board, 'player2');
-  const placingProgress = gameState.phase === 'placing' ? gameState.totalPlaced.player1 : PIECES_PER_PLAYER;
 
   const posToLabel = (pos: Position): string => {
     const cols = ['A', 'B', 'C', 'D', 'E'];
@@ -618,13 +619,13 @@ function App() {
       {gameState.phase === 'placing' && (
         <div className="relative z-10 w-full max-w-xs mb-3">
           <div className="flex justify-between text-[10px] text-amber-400/80 mb-1 font-medium">
-            <span>配置進捗</span>
-            <span>{placingProgress}/{PIECES_PER_PLAYER}</span>
+            <span>配置進捗（あなた/AI）</span>
+            <span>{gameState.totalPlaced.player1}/{PIECES_PER_PLAYER} | {gameState.totalPlaced.player2}/{PIECES_PER_PLAYER}</span>
           </div>
           <div className="h-1.5 bg-amber-900/50 rounded-full overflow-hidden border border-amber-700/30">
             <div
               className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-500 rounded-full"
-              style={{ width: `${(placingProgress / PIECES_PER_PLAYER) * 100}%` }}
+              style={{ width: `${(gameState.totalPlaced.player1 / PIECES_PER_PLAYER) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -939,7 +940,7 @@ function App() {
               <span className="text-amber-400 font-bold min-w-[20px]">①</span>
               <div>
                 <strong className="text-amber-300">配置フェーズ</strong>
-                <p className="text-amber-200/70 mt-0.5">交互に2個ずつ駒を置く（中央以外、各12個ずつ）</p>
+                <p className="text-amber-200/70 mt-0.5">交互に1個ずつ駒を置く（中央以外、各12個ずつ）</p>
               </div>
             </div>
             <div className="flex gap-2">
