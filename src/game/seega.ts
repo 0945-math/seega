@@ -1,4 +1,4 @@
-// シーガ（Seega）ゲームロジック
+// シーガ（Seega）ゲームロジック - 完全版
 // 古代エジプトの挟み棋ゲーム
 
 export type Player = 'player1' | 'player2';
@@ -17,6 +17,7 @@ export interface MoveRecord {
   from?: Position;
   to: Position;
   captured?: Position[];
+  timestamp: number;
 }
 
 export interface GameState {
@@ -36,6 +37,8 @@ export interface GameState {
   moveHistory: MoveRecord[];
   lastMove: { from?: Position; to: Position } | null;
   capturedPositions: Position[];
+  consecutivePasses: number;
+  turnNumber: number;
 }
 
 const BOARD_SIZE = 5;
@@ -60,6 +63,8 @@ export function createInitialState(): GameState {
     moveHistory: [],
     lastMove: null,
     capturedPositions: [],
+    consecutivePasses: 0,
+    turnNumber: 1,
   };
 }
 
@@ -106,6 +111,7 @@ export function placePiece(state: GameState, pos: Position): GameState {
     type: 'place' as const,
     player: state.currentPlayer,
     to: pos,
+    timestamp: Date.now(),
   }];
 
   return {
@@ -121,6 +127,7 @@ export function placePiece(state: GameState, pos: Position): GameState {
     moveHistory: newMoveHistory,
     lastMove: { to: pos },
     capturedPositions: [],
+    turnNumber: shouldSwitchTurn ? state.turnNumber + 1 : state.turnNumber,
   };
 }
 
@@ -224,6 +231,7 @@ export function movePiece(state: GameState, from: Position, to: Position): GameS
     from,
     to,
     captured: captures.length > 0 ? captures : undefined,
+    timestamp: Date.now(),
   }];
 
   return {
@@ -240,6 +248,8 @@ export function movePiece(state: GameState, from: Position, to: Position): GameS
     moveHistory: newMoveHistory,
     lastMove: { from, to },
     capturedPositions,
+    consecutivePasses: 0,
+    turnNumber: canContinueCapture ? state.turnNumber : state.turnNumber + 1,
   };
 }
 
@@ -302,7 +312,24 @@ function evaluate(board: Board, aiPlayer: Player): number {
   if (myPieces <= 1) return -10000;
 
   const center = Math.floor(BOARD_SIZE / 2);
-  if (board[center][center] === aiPlayer) score += 30;
+  
+  // 中央制御ボーナス
+  if (board[center][center] === aiPlayer) score += 50;
+  if (board[center][center] === opponent) score -= 50;
+
+  // 位置ボーナス（中央に近いほど良い）
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] === null) continue;
+      const dist = Math.abs(r - center) + Math.abs(c - center);
+      const posBonus = (4 - dist) * 5;
+      if (board[r][c] === aiPlayer) {
+        score += posBonus;
+      } else {
+        score -= posBonus;
+      }
+    }
+  }
 
   // 挟める位置のボーナス
   for (let r = 0; r < BOARD_SIZE; r++) {
@@ -317,7 +344,7 @@ function evaluate(board: Board, aiPlayer: Player): number {
           const br = ar + dir.dr;
           const bc = ac + dir.dc;
           if (br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE && board[br][bc] === null) {
-            score += 15;
+            score += 20;
           }
         }
       }
@@ -337,7 +364,24 @@ function evaluate(board: Board, aiPlayer: Player): number {
         if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE &&
             br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE) {
           if (board[ar][ac] === opponent && board[br][bc] === null) {
-            score -= 10;
+            score -= 15;
+          }
+        }
+      }
+    }
+  }
+
+  // 連携ボーナス（隣接する自分の駒）
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] !== aiPlayer) continue;
+      const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
+      for (const dir of dirs) {
+        const ar = r + dir.dr;
+        const ac = c + dir.dc;
+        if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE) {
+          if (board[ar][ac] === aiPlayer) {
+            score += 3;
           }
         }
       }
@@ -387,9 +431,11 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
   let score = 0;
   const center = Math.floor(BOARD_SIZE / 2);
 
+  // 中央に近いほど良い
   const distToCenter = Math.abs(pos.row - center) + Math.abs(pos.col - center);
-  score += (4 - distToCenter) * 8;
+  score += (4 - distToCenter) * 10;
 
+  // 挟める位置かチェック
   const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
   for (const dir of dirs) {
     const ar = pos.row + dir.dr;
@@ -400,11 +446,12 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
       const br = ar + dir.dr;
       const bc = ac + dir.dc;
       if (br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE && board[br][bc] === player) {
-        score += 60;
+        score += 80;
       }
     }
   }
 
+  // 挟まれるリスク
   for (const dir of dirs) {
     const ar = pos.row + dir.dr;
     const ac = pos.col + dir.dc;
@@ -413,7 +460,18 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
     if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE &&
         br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE) {
       if (board[ar][ac] === opponent && board[br][bc] === null) {
-        score -= 20;
+        score -= 25;
+      }
+    }
+  }
+
+  // 隣接する自分の駒
+  for (const dir of dirs) {
+    const ar = pos.row + dir.dr;
+    const ac = pos.col + dir.dc;
+    if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE) {
+      if (board[ar][ac] === player) {
+        score += 5;
       }
     }
   }
@@ -478,7 +536,7 @@ function getAIMove(state: GameState, depth: number = 3): { from: Position; to: P
         const afterBoard = testBoard.map(row => [...row]);
         for (const cap of captures) {
           afterBoard[cap.row][cap.col] = null;
-          score += 150;
+          score += 200;
         }
 
         if (depth > 0) {

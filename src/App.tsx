@@ -15,9 +15,103 @@ import {
   PIECES_PER_PLAYER,
 } from './game/seega';
 
-// 定数
 const BOARD_SIZE = 5;
 const CENTER = Math.floor(BOARD_SIZE / 2);
+
+// サウンドエフェクト
+class SoundManager {
+  private audioContext: AudioContext | null = null;
+
+  init() {
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+  }
+
+  playPlace() {
+    this.init();
+    if (!this.audioContext) return;
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
+    oscillator.frequency.value = 400;
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+    oscillator.start(this.audioContext.currentTime);
+    oscillator.stop(this.audioContext.currentTime + 0.1);
+  }
+
+  playMove() {
+    this.init();
+    if (!this.audioContext) return;
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
+    oscillator.frequency.value = 300;
+    oscillator.type = 'triangle';
+    gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+    oscillator.start(this.audioContext.currentTime);
+    oscillator.stop(this.audioContext.currentTime + 0.15);
+  }
+
+  playCapture() {
+    this.init();
+    if (!this.audioContext) return;
+    const oscillator = this.audioContext.createOscillator();
+    const gainNode = this.audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(this.audioContext.destination);
+    oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.3);
+    oscillator.type = 'sawtooth';
+    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+    oscillator.start(this.audioContext.currentTime);
+    oscillator.stop(this.audioContext.currentTime + 0.3);
+  }
+
+  playWin() {
+    this.init();
+    if (!this.audioContext) return;
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((freq, i) => {
+      const oscillator = this.audioContext!.createOscillator();
+      const gainNode = this.audioContext!.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext!.destination);
+      oscillator.frequency.value = freq;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.15);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.15 + 0.3);
+      oscillator.start(this.audioContext!.currentTime + i * 0.15);
+      oscillator.stop(this.audioContext!.currentTime + i * 0.15 + 0.3);
+    });
+  }
+
+  playLose() {
+    this.init();
+    if (!this.audioContext) return;
+    const notes = [400, 350, 300, 250];
+    notes.forEach((freq, i) => {
+      const oscillator = this.audioContext!.createOscillator();
+      const gainNode = this.audioContext!.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext!.destination);
+      oscillator.frequency.value = freq;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.2);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.2 + 0.4);
+      oscillator.start(this.audioContext!.currentTime + i * 0.2);
+      oscillator.stop(this.audioContext!.currentTime + i * 0.2 + 0.4);
+    });
+  }
+}
+
+const soundManager = new SoundManager();
 
 function App() {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
@@ -26,17 +120,24 @@ function App() {
   const [showRules, setShowRules] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [animatingCells, setAnimatingCells] = useState<Set<string>>(new Set());
+  const [capturedCells, setCapturedCells] = useState<Set<string>>(new Set());
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
 
   const playerSide: Player = 'player1';
   const aiSide: Player = 'player2';
 
-  // アニメーション処理
   const triggerAnimation = useCallback((positions: Position[]) => {
     const keys = new Set(positions.map(p => `${p.row}-${p.col}`));
     setAnimatingCells(keys);
     setTimeout(() => setAnimatingCells(new Set()), 600);
+  }, []);
+
+  const triggerCaptureAnimation = useCallback((positions: Position[]) => {
+    const keys = new Set(positions.map(p => `${p.row}-${p.col}`));
+    setCapturedCells(keys);
+    setTimeout(() => setCapturedCells(new Set()), 800);
   }, []);
 
   // AIのターン処理
@@ -57,20 +158,34 @@ function App() {
         newState.message = '配置フェーズ：あなたの駒を2個置いてください';
         setGameState(newState);
         triggerAnimation(placements);
+        if (soundEnabled) soundManager.playPlace();
       } else if (state.phase === 'moving') {
         const aiMove = getAIMove(state, difficulty);
         if (aiMove) {
           let newState = movePiece(state, aiMove.from, aiMove.to);
-          const animatedPositions = [aiMove.to, ...(newState.capturedPositions || [])];
-          triggerAnimation(animatedPositions);
+          triggerAnimation([aiMove.to]);
+          if (soundEnabled) soundManager.playMove();
 
-          // 連続キャプチャ処理
+          if (newState.capturedPositions.length > 0) {
+            setTimeout(() => {
+              triggerCaptureAnimation(newState.capturedPositions);
+              if (soundEnabled) soundManager.playCapture();
+            }, 200);
+          }
+
           let captureCount = 0;
           while (newState.canCapture && newState.currentPlayer === aiSide && !newState.gameOver && captureCount < 5) {
             const nextMove = getAIMove(newState, difficulty);
             if (nextMove) {
               newState = movePiece(newState, nextMove.from, nextMove.to);
-              triggerAnimation([nextMove.to, ...(newState.capturedPositions || [])]);
+              triggerAnimation([nextMove.to]);
+              if (soundEnabled) soundManager.playMove();
+              if (newState.capturedPositions.length > 0) {
+                setTimeout(() => {
+                  triggerCaptureAnimation(newState.capturedPositions);
+                  if (soundEnabled) soundManager.playCapture();
+                }, 200);
+              }
               captureCount++;
             } else {
               break;
@@ -87,9 +202,19 @@ function App() {
     }, 700);
 
     return () => clearTimeout(timer);
-  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty, triggerAnimation]);
+  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty, triggerAnimation, triggerCaptureAnimation, soundEnabled]);
 
-  // セルクリック
+  // ゲーム終了時のサウンド
+  useEffect(() => {
+    if (gameState.gameOver && soundEnabled) {
+      if (gameState.winner === playerSide) {
+        soundManager.playWin();
+      } else {
+        soundManager.playLose();
+      }
+    }
+  }, [gameState.gameOver, gameState.winner, playerSide, soundEnabled]);
+
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameState.gameOver || isThinking) return;
     if (gameState.currentPlayer !== playerSide) return;
@@ -104,6 +229,7 @@ function App() {
         }
         setGameState(newState);
         triggerAnimation([pos]);
+        if (soundEnabled) soundManager.playPlace();
       }
       return;
     }
@@ -111,14 +237,20 @@ function App() {
     if (gameState.phase === 'moving') {
       const clickedPiece = gameState.board[row][col];
 
-      // 連続キャプチャ中
       if (gameState.canCapture) {
         if (gameState.selectedPos) {
           const isValid = gameState.validMoves.some(m => m.row === row && m.col === col);
           if (isValid) {
             const newState = movePiece(gameState, gameState.selectedPos, pos);
             setGameState(newState);
-            triggerAnimation([pos, ...(newState.capturedPositions || [])]);
+            triggerAnimation([pos]);
+            if (soundEnabled) soundManager.playMove();
+            if (newState.capturedPositions.length > 0) {
+              setTimeout(() => {
+                triggerCaptureAnimation(newState.capturedPositions);
+                if (soundEnabled) soundManager.playCapture();
+              }, 200);
+            }
             return;
           }
         }
@@ -131,7 +263,6 @@ function App() {
         return;
       }
 
-      // 通常移動
       if (gameState.selectedPos) {
         const isValid = gameState.validMoves.some(m => m.row === row && m.col === col);
         if (isValid) {
@@ -143,7 +274,14 @@ function App() {
           }
           const newState = movePiece(gameState, gameState.selectedPos, pos);
           setGameState(newState);
-          triggerAnimation([pos, ...(newState.capturedPositions || [])]);
+          triggerAnimation([pos]);
+          if (soundEnabled) soundManager.playMove();
+          if (newState.capturedPositions.length > 0) {
+            setTimeout(() => {
+              triggerCaptureAnimation(newState.capturedPositions);
+              if (soundEnabled) soundManager.playCapture();
+            }, 200);
+          }
           return;
         }
         if (clickedPiece === playerSide) {
@@ -162,7 +300,7 @@ function App() {
         }
       }
     }
-  }, [gameState, playerSide, isThinking, triggerAnimation]);
+  }, [gameState, playerSide, isThinking, triggerAnimation, triggerCaptureAnimation, soundEnabled]);
 
   const handleReset = useCallback(() => {
     setGameState(createInitialState());
@@ -173,7 +311,6 @@ function App() {
   const p2Count = countPieces(gameState.board, 'player2');
   const placingProgress = gameState.phase === 'placing' ? gameState.totalPlaced.player1 : PIECES_PER_PLAYER;
 
-  // 座標を将棋風に
   const posToLabel = (pos: Position): string => {
     const cols = ['1', '2', '3', '4', '5'];
     const rows = ['一', '二', '三', '四', '五'];
@@ -188,8 +325,6 @@ function App() {
         <div className="absolute top-32 right-16 text-5xl -rotate-12">🐫</div>
         <div className="absolute bottom-32 left-16 text-6xl rotate-6">🌙</div>
         <div className="absolute bottom-16 right-10 text-7xl -rotate-6">⚱️</div>
-        <div className="absolute top-1/2 left-4 text-4xl">✨</div>
-        <div className="absolute top-1/3 right-8 text-4xl">✨</div>
       </div>
 
       {/* タイトル */}
@@ -202,7 +337,7 @@ function App() {
         <p className="text-xs text-amber-400/80 mt-1 tracking-widest uppercase">Ancient Egyptian Strategy Game</p>
       </div>
 
-      {/* 難易度選択 */}
+      {/* コントロール */}
       <div className="relative z-10 mb-3 flex items-center gap-2 flex-wrap justify-center">
         <span className="text-xs text-amber-300 font-medium">AI:</span>
         {[
@@ -222,11 +357,20 @@ function App() {
             {d.emoji} {d.label}
           </button>
         ))}
+        <button
+          onClick={() => setSoundEnabled(!soundEnabled)}
+          className={`px-3 py-1 text-sm rounded-lg transition-all duration-300 ${
+            soundEnabled
+              ? 'bg-green-600/50 text-green-200 border border-green-500/50'
+              : 'bg-gray-700/50 text-gray-400 border border-gray-600/50'
+          }`}
+        >
+          {soundEnabled ? '🔊' : '🔇'}
+        </button>
       </div>
 
       {/* スコアボード */}
       <div className="relative z-10 flex gap-3 sm:gap-6 mb-3">
-        {/* プレイヤースコア */}
         <div className={`px-3 py-2 rounded-xl border transition-all duration-300 ${
           gameState.currentPlayer === playerSide && !gameState.gameOver
             ? 'bg-gradient-to-br from-amber-600/30 to-amber-800/30 border-amber-400/60 shadow-lg shadow-amber-500/20'
@@ -244,12 +388,10 @@ function App() {
           )}
         </div>
 
-        {/* VS */}
         <div className="flex items-center">
           <span className="text-amber-500 font-bold text-lg">VS</span>
         </div>
 
-        {/* AIスコア */}
         <div className={`px-3 py-2 rounded-xl border transition-all duration-300 ${
           gameState.currentPlayer === aiSide && !gameState.gameOver
             ? 'bg-gradient-to-br from-gray-600/30 to-gray-800/30 border-gray-400/60 shadow-lg shadow-gray-500/20'
@@ -305,10 +447,8 @@ function App() {
 
       {/* 盤面 */}
       <div className="relative z-10">
-        {/* 外枠装飾 */}
         <div className="absolute -inset-2 bg-gradient-to-br from-amber-600/30 via-yellow-600/20 to-amber-700/30 rounded-2xl blur-sm"></div>
         <div className="relative bg-gradient-to-br from-amber-800 to-amber-900 p-2 sm:p-3 rounded-xl shadow-2xl border-2 border-amber-600/50">
-          {/* 内側装飾 */}
           <div className="absolute inset-1 rounded-lg border border-amber-500/20 pointer-events-none"></div>
 
           <div className="grid gap-0" style={{ gridTemplateColumns: `repeat(5, 1fr)` }}>
@@ -321,8 +461,8 @@ function App() {
               const isValidMove = gameState.validMoves.some(m => m.row === row && m.col === col);
               const canPlaceHere = gameState.phase === 'placing' && gameState.currentPlayer === playerSide && canPlace(gameState, { row, col });
               const isLastMove = gameState.lastMove?.to.row === row && gameState.lastMove?.to.col === col;
-              const isCaptured = gameState.capturedPositions?.some(p => p.row === row && p.col === col);
               const isAnimating = animatingCells.has(`${row}-${col}`);
+              const isCaptured = capturedCells.has(`${row}-${col}`);
 
               return (
                 <div
@@ -343,10 +483,8 @@ function App() {
                     ${!cell && !isValidMove && !canPlaceHere ? 'hover:bg-amber-600/20' : ''}
                   `}
                 >
-                  {/* グリッド線 */}
                   <div className="absolute inset-0 border border-amber-600/20 pointer-events-none"></div>
 
-                  {/* 中央マーク */}
                   {isCenterCell && !cell && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-4 h-4 rounded-full border-2 border-amber-400/40 flex items-center justify-center">
@@ -355,7 +493,6 @@ function App() {
                     </div>
                   )}
 
-                  {/* 駒 */}
                   {cell && (
                     <div className={`
                       w-10 h-10 sm:w-12 sm:h-12 rounded-full shadow-xl flex items-center justify-center
@@ -364,16 +501,14 @@ function App() {
                         ? 'bg-gradient-to-br from-white via-gray-100 to-gray-300 border-2 border-gray-200 shadow-white/20'
                         : 'bg-gradient-to-br from-gray-600 via-gray-800 to-black border-2 border-gray-500 shadow-black/40'}
                       ${isSelected ? 'scale-110 shadow-2xl ring-2 ring-yellow-300/50' : ''}
-                      ${isAnimating && !isCaptured ? 'animate-place' : ''}
-                      ${isCaptured ? 'animate-capture' : ''}
+                      ${isAnimating && !isCaptured ? 'animate-bounce' : ''}
+                      ${isCaptured ? 'animate-ping opacity-0' : ''}
                     `}>
-                      {/* 駒の質感 */}
                       <div className={`absolute inset-1 rounded-full ${
                         cell === 'player1'
                           ? 'bg-gradient-to-br from-white/50 to-transparent'
                           : 'bg-gradient-to-br from-gray-400/30 to-transparent'
                       }`}></div>
-                      {/* 中央の模様 */}
                       <div className={`w-3 h-3 sm:w-4 sm:h-4 rounded-full flex items-center justify-center ${
                         cell === 'player1'
                           ? 'bg-gradient-to-br from-gray-200 to-gray-400'
@@ -381,14 +516,11 @@ function App() {
                       }`}>
                         <span className={`text-[6px] sm:text-[8px] font-bold ${
                           cell === 'player1' ? 'text-gray-500' : 'text-gray-300'
-                        }`}>
-                          {cell === 'player1' ? '☥' : '☥'}
-                        </span>
+                        }`}>☥</span>
                       </div>
                     </div>
                   )}
 
-                  {/* 有効手インジケータ */}
                   {isValidMove && !cell && (
                     <div className="w-4 h-4 rounded-full bg-green-400/60 animate-pulse shadow-lg shadow-green-400/30"></div>
                   )}
