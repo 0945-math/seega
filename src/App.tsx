@@ -1,227 +1,191 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { GameState, Position, Piece, PieceType, Player, PIECE_NAMES, Move } from './game/types';
-import { createInitialGameState, getValidMoves, getDropMoves, canPromote, mustPromote, applyMove, isInCheck } from './game/rules';
-import { getAIMove } from './game/ai';
+import {
+  GameState,
+  Position,
+  Player,
+  createInitialState,
+  canPlace,
+  placePiece,
+  getValidMoves,
+  movePiece,
+  countPieces,
+  hasAnyValidMove,
+  getAIPlacement,
+  getAIMove,
+  isFirstMove,
+} from './game/seega';
 
 function App() {
-  const [gameState, setGameState] = useState<GameState>(createInitialGameState());
-  const [showPromotion, setShowPromotion] = useState<{ move: Move } | null>(null);
-  const [selectedHandPiece, setSelectedHandPiece] = useState<PieceType | null>(null);
-  const [difficulty, setDifficulty] = useState<number>(1);
+  const [gameState, setGameState] = useState<GameState>(createInitialState());
+  const [difficulty, setDifficulty] = useState<number>(2);
   const [isThinking, setIsThinking] = useState(false);
-  const [playerSide] = useState<Player>('sente');
   const gameStateRef = useRef(gameState);
   gameStateRef.current = gameState;
 
-  // AIの手番
+  const playerSide: Player = 'player1';
+  const aiSide: Player = 'player2';
+
+  // AIのターン処理
   useEffect(() => {
-    if (gameState.currentPlayer !== playerSide && !gameState.gameOver && !showPromotion) {
-      setIsThinking(true);
-      const timer = setTimeout(() => {
-        const currentState = gameStateRef.current;
-        const aiMove = getAIMove(currentState, difficulty);
+    if (gameState.gameOver) return;
+    if (gameState.currentPlayer !== aiSide) return;
+
+    setIsThinking(true);
+    const timer = setTimeout(() => {
+      const state = gameStateRef.current;
+
+      if (state.phase === 'placing') {
+        // 配置フェーズ - 2個ずつ配置
+        const placements = getAIPlacement(state);
+        let newState = state;
+        for (const pos of placements) {
+          newState = placePiece(newState, pos);
+        }
+        newState.message = '配置フェーズ：あなたの駒を置いてください（2個/ターン）';
+        setGameState(newState);
+      } else if (state.phase === 'moving') {
+        // 移動フェーズ
+        const aiMove = getAIMove(state, difficulty);
         if (aiMove) {
-          const newState = applyMove(currentState, aiMove);
-          if (isInCheck(newState.board, newState.currentPlayer)) {
-            newState.message = '王手！';
-          } else {
+          let newState = movePiece(state, aiMove.from, aiMove.to);
+          // 連続キャプチャ処理
+          let captureCount = 0;
+          while (newState.canCapture && newState.currentPlayer === aiSide && !newState.gameOver && captureCount < 5) {
+            const nextMove = getAIMove(newState, difficulty);
+            if (nextMove) {
+              newState = movePiece(newState, nextMove.from, nextMove.to);
+              captureCount++;
+            } else {
+              break;
+            }
+          }
+          if (!newState.gameOver && newState.currentPlayer === playerSide) {
             newState.message = 'あなたの番です';
           }
           setGameState(newState);
         }
-        setIsThinking(false);
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-  }, [gameState.currentPlayer, gameState.gameOver, playerSide, difficulty, showPromotion]);
+      }
+
+      setIsThinking(false);
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty]);
 
   // セルクリック
   const handleCellClick = useCallback((row: number, col: number) => {
-    if (gameState.gameOver || gameState.currentPlayer !== playerSide || isThinking) return;
+    if (gameState.gameOver || isThinking) return;
+    if (gameState.currentPlayer !== playerSide) return;
 
     const pos: Position = { row, col };
-    const clickedPiece = gameState.board[row][col];
 
-    // 持ち駒を打つモード
-    if (selectedHandPiece) {
-      const hand = playerSide === 'sente' ? gameState.senteHand : gameState.goteHand;
-      const dropMoves = getDropMoves(gameState.board, hand, playerSide);
-      const isValidDrop = dropMoves.some(d => d.pos.row === row && d.pos.col === col);
-
-      if (isValidDrop) {
-        const piece: Piece = { type: selectedHandPiece, player: playerSide, promoted: false };
-        const move: Move = { from: { row: -1, col: -1 }, to: pos, piece, drop: true };
-        const newState = applyMove(gameState, move);
-        if (isInCheck(newState.board, newState.currentPlayer)) {
-          newState.message = '王手！';
-        } else {
-          newState.message = '';
+    if (gameState.phase === 'placing') {
+      // 配置フェーズ
+      if (canPlace(gameState, pos)) {
+        const newState = placePiece(gameState, pos);
+        if (newState.currentPlayer === playerSide && newState.piecesPlacedThisTurn === 1) {
+          newState.message = 'あと1個置いてください';
         }
         setGameState(newState);
       }
-      setSelectedHandPiece(null);
       return;
     }
 
-    // 既に自分の駒を選択している場合
-    if (gameState.selectedPosition) {
-      const isValidMove = gameState.validMoves.some(m => m.row === row && m.col === col);
+    if (gameState.phase === 'moving') {
+      // 移動フェーズ
+      const clickedPiece = gameState.board[row][col];
 
-      if (isValidMove) {
-        const from = gameState.selectedPosition;
-        const piece = gameState.board[from.row][from.col]!;
-        const captured = gameState.board[row][col] || undefined;
-        const canP = canPromote(piece, from, pos);
-        const mustP = mustPromote(piece, pos);
-
-        if (mustP) {
-          const move: Move = { from, to: pos, piece, captured, promoted: true };
-          const newState = applyMove(gameState, move);
-          if (isInCheck(newState.board, newState.currentPlayer)) {
-            newState.message = '王手！';
-          } else {
-            newState.message = '';
+      // 連続キャプチャ中は選択中の駒を移動させるだけ
+      if (gameState.canCapture) {
+        if (gameState.selectedPos) {
+          const isValid = gameState.validMoves.some(m => m.row === row && m.col === col);
+          if (isValid) {
+            const newState = movePiece(gameState, gameState.selectedPos, pos);
+            setGameState(newState);
+            return;
           }
-          setGameState(newState);
-        } else if (canP) {
-          setShowPromotion({ move: { from, to: pos, piece, captured } });
-        } else {
-          const move: Move = { from, to: pos, piece, captured, promoted: false };
-          const newState = applyMove(gameState, move);
-          if (isInCheck(newState.board, newState.currentPlayer)) {
-            newState.message = '王手！';
-          } else {
-            newState.message = '';
+        }
+        // 別の自分の駒を選択
+        if (clickedPiece === playerSide) {
+          const moves = getValidMoves(gameState.board, pos);
+          if (moves.length > 0) {
+            setGameState({ ...gameState, selectedPos: pos, validMoves: moves });
           }
-          setGameState(newState);
         }
         return;
       }
 
-      // 自分の別の駒をクリックした場合、選択を変更
-      if (clickedPiece && clickedPiece.player === playerSide) {
-        const hand = playerSide === 'sente' ? gameState.senteHand : gameState.goteHand;
-        const moves = getValidMoves(gameState.board, pos, clickedPiece, hand);
-        setGameState({
-          ...gameState,
-          selectedPosition: pos,
-          validMoves: moves,
-        });
+      // 通常移動
+      if (gameState.selectedPos) {
+        const isValid = gameState.validMoves.some(m => m.row === row && m.col === col);
+        if (isValid) {
+          // 先手の最初の移動は中央のみ
+          if (isFirstMove(gameState) && playerSide === 'player1') {
+            const center = Math.floor(5 / 2);
+            if (row !== center || col !== center) {
+              setGameState({ ...gameState, message: '最初の一手は中央に移動してください' });
+              return;
+            }
+          }
+          const newState = movePiece(gameState, gameState.selectedPos, pos);
+          setGameState(newState);
+          return;
+        }
+        // 別の自分の駒を選択
+        if (clickedPiece === playerSide) {
+          const moves = getValidMoves(gameState.board, pos);
+          setGameState({ ...gameState, selectedPos: pos, validMoves: moves });
+          return;
+        }
+        // 選択解除
+        setGameState({ ...gameState, selectedPos: null, validMoves: [] });
         return;
       }
 
-      // 選択解除
-      setGameState({ ...gameState, selectedPosition: null, validMoves: [] });
-      return;
+      // 新しい駒を選択
+      if (clickedPiece === playerSide) {
+        const moves = getValidMoves(gameState.board, pos);
+        if (moves.length > 0) {
+          setGameState({ ...gameState, selectedPos: pos, validMoves: moves });
+        }
+      }
     }
-
-    // 新しい駒を選択
-    if (clickedPiece && clickedPiece.player === playerSide) {
-      const hand = playerSide === 'sente' ? gameState.senteHand : gameState.goteHand;
-      const moves = getValidMoves(gameState.board, pos, clickedPiece, hand);
-      setGameState({
-        ...gameState,
-        selectedPosition: pos,
-        validMoves: moves,
-      });
-    }
-  }, [gameState, playerSide, selectedHandPiece, isThinking]);
-
-  // 成る/成らない選択
-  const handlePromotion = useCallback((promote: boolean) => {
-    if (!showPromotion) return;
-    const { move } = showPromotion;
-    const newMove: Move = { ...move, promoted: promote };
-    const newState = applyMove(gameState, newMove);
-    if (isInCheck(newState.board, newState.currentPlayer)) {
-      newState.message = '王手！';
-    } else {
-      newState.message = '';
-    }
-    setGameState(newState);
-    setShowPromotion(null);
-  }, [showPromotion, gameState]);
-
-  // 持ち駒クリック
-  const handleHandPieceClick = useCallback((type: PieceType) => {
-    if (gameState.gameOver || gameState.currentPlayer !== playerSide || isThinking) return;
-    setSelectedHandPiece(selectedHandPiece === type ? null : type);
-    setGameState({ ...gameState, selectedPosition: null, validMoves: [] });
-  }, [gameState, playerSide, selectedHandPiece, isThinking]);
+  }, [gameState, playerSide, aiSide, isThinking]);
 
   // ゲームリセット
   const handleReset = useCallback(() => {
-    setGameState(createInitialGameState());
-    setShowPromotion(null);
-    setSelectedHandPiece(null);
+    setGameState(createInitialState());
     setIsThinking(false);
   }, []);
 
-  // 駒の表示名を取得
-  const getPieceDisplay = (piece: Piece): string => {
-    const name = piece.promoted ? PIECE_NAMES[piece.type].promoted : PIECE_NAMES[piece.type].normal;
-    return name;
-  };
-
-  // 持ち駒の表示
-  const renderHand = (hand: Map<PieceType, number>, player: Player, isPlayerHand: boolean) => {
-    const pieces: PieceType[] = ['rook', 'bishop', 'gold', 'silver', 'knight', 'lance', 'pawn'];
-    const hasAny = pieces.some(t => (hand.get(t) || 0) > 0);
-
-    return (
-      <div className={`flex flex-wrap gap-1 ${isPlayerHand ? 'justify-end' : 'justify-start'}`}>
-        {!hasAny && <span className="text-xs text-gray-400">なし</span>}
-        {pieces.map(type => {
-          const count = hand.get(type) || 0;
-          if (count === 0) return null;
-          return (
-            <button
-              key={type}
-              onClick={() => isPlayerHand ? handleHandPieceClick(type) : undefined}
-              className={`
-                px-2 py-1 text-sm rounded border font-medium transition-all
-                ${isPlayerHand && selectedHandPiece === type
-                  ? 'bg-yellow-300 border-yellow-600 shadow-md scale-105'
-                  : isPlayerHand
-                    ? 'bg-white hover:bg-yellow-50 border-gray-300 cursor-pointer hover:border-yellow-400'
-                    : 'bg-gray-50 border-gray-200 cursor-default'}
-              `}
-              disabled={!isPlayerHand}
-            >
-              <span className={player === 'gote' ? '' : ''}>{PIECE_NAMES[type].normal}</span>
-              <span className="ml-0.5 text-xs">×{count}</span>
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const rowLabels = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  const center = Math.floor(5 / 2);
+  const p1Count = countPieces(gameState.board, 'player1');
+  const p2Count = countPieces(gameState.board, 'player2');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 flex flex-col items-center py-3 px-2">
+    <div className="min-h-screen bg-gradient-to-br from-amber-800 via-amber-900 to-yellow-900 flex flex-col items-center py-4 px-2">
       {/* タイトル */}
-      <h1 className="text-2xl sm:text-3xl font-bold text-amber-900 mb-2 flex items-center gap-2">
-        <span>🏯</span>
-        <span>将棋AI対戦</span>
+      <h1 className="text-2xl sm:text-3xl font-bold text-amber-100 mb-1 flex items-center gap-2">
+        <span>🏺</span>
+        <span>シーガ (Seega)</span>
       </h1>
+      <p className="text-xs text-amber-300 mb-3">古代エジプトの伝統的な挟み棋ゲーム</p>
 
       {/* 難易度選択 */}
       <div className="mb-3 flex items-center gap-2 flex-wrap justify-center">
-        <span className="text-sm text-amber-800 font-medium">難易度:</span>
+        <span className="text-sm text-amber-200 font-medium">AI強さ:</span>
         {[
-          { label: '簡単', value: 0 },
-          { label: '普通', value: 1 },
-          { label: '強い', value: 2 },
+          { label: '弱い', value: 1 },
+          { label: '普通', value: 2 },
+          { label: '強い', value: 3 },
         ].map(d => (
           <button
             key={d.value}
             onClick={() => { setDifficulty(d.value); handleReset(); }}
             className={`px-3 py-1 text-sm rounded-full transition-all ${
               difficulty === d.value
-                ? 'bg-amber-700 text-white shadow-md'
-                : 'bg-white text-amber-800 border border-amber-300 hover:bg-amber-100'
+                ? 'bg-amber-200 text-amber-900 shadow-md font-bold'
+                : 'bg-amber-800/50 text-amber-200 border border-amber-600 hover:bg-amber-700/50'
             }`}
           >
             {d.label}
@@ -229,139 +193,131 @@ function App() {
         ))}
       </div>
 
+      {/* スコア表示 */}
+      <div className="flex gap-6 mb-2 text-sm">
+        <div className="text-center">
+          <div className="text-amber-300 font-medium">あなた (白)</div>
+          <div className="text-2xl font-bold text-white">{p1Count}</div>
+          <div className="text-xs text-amber-400">取った: {gameState.capturedBy.player1}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-amber-300 font-medium">AI (黒)</div>
+          <div className="text-2xl font-bold text-white">{p2Count}</div>
+          <div className="text-xs text-amber-400">取った: {gameState.capturedBy.player2}</div>
+        </div>
+      </div>
+
       {/* メッセージ */}
-      <div className={`mb-2 px-4 py-2 rounded-lg text-center font-medium text-sm sm:text-base transition-all ${
+      <div className={`mb-3 px-4 py-2 rounded-lg text-center font-medium text-sm transition-all ${
         gameState.gameOver
-          ? 'bg-red-100 text-red-800 border border-red-200'
-          : gameState.message.includes('王手')
-            ? 'bg-orange-100 text-orange-800 border border-orange-200 animate-pulse'
-            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+          ? gameState.winner === playerSide
+            ? 'bg-green-200 text-green-900 border border-green-400'
+            : 'bg-red-200 text-red-900 border border-red-400'
+          : gameState.phase === 'placing'
+            ? 'bg-blue-100 text-blue-900 border border-blue-300'
+            : 'bg-amber-100 text-amber-900 border border-amber-300'
       }`}>
         {gameState.gameOver
           ? (gameState.winner === playerSide ? '🎉 あなたの勝ち！' : '😢 AIの勝ち...')
           : isThinking
             ? '🤔 AIが考えています...'
-            : selectedHandPiece
-              ? `持ち駒「${PIECE_NAMES[selectedHandPiece].normal}」を盤面に打ってください`
-              : gameState.message || 'あなたの番です（先手）'}
+            : gameState.message}
       </div>
 
-      {/* 後手の持ち駒 */}
-      <div className="mb-1 w-full max-w-lg px-2">
-        <div className="text-xs text-amber-700 mb-0.5 font-medium">🤖 AI（後手）持ち駒:</div>
-        {renderHand(gameState.goteHand, 'gote', false)}
-      </div>
+      {/* 盤面 */}
+      <div className="relative bg-amber-700 p-3 rounded-xl shadow-2xl border-4 border-amber-600">
+        {/* 碁盤風グリッド */}
+        <div className="grid gap-0" style={{ gridTemplateColumns: `repeat(5, 1fr)` }}>
+          {Array.from({ length: 25 }, (_, idx) => {
+            const row = Math.floor(idx / 5);
+            const col = idx % 5;
+            const cell = gameState.board[row][col];
+            const isCenterCell = row === center && col === center;
+            const isSelected = gameState.selectedPos?.row === row && gameState.selectedPos?.col === col;
+            const isValidMove = gameState.validMoves.some(m => m.row === row && m.col === col);
+            const canPlaceHere = gameState.phase === 'placing' && gameState.currentPlayer === playerSide && canPlace(gameState, { row, col });
 
-      {/* 将棋盤 */}
-      <div className="relative my-1">
-        <div className="bg-amber-100 border-4 border-amber-900 rounded shadow-2xl p-0.5">
-          {/* 列番号 */}
-          <div className="flex">
-            <div className="w-5 sm:w-6"></div>
-            {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} className="w-9 h-4 sm:w-11 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs text-amber-800 font-bold">
-                {9 - i}
-              </div>
-            ))}
-          </div>
-
-          {/* 盤面 */}
-          {Array.from({ length: 9 }, (_, row) => (
-            <div key={row} className="flex">
-              {/* 行番号 */}
-              <div className="w-5 sm:w-6 h-9 sm:h-11 flex items-center justify-center text-[10px] sm:text-xs text-amber-800 font-bold">
-                {rowLabels[row]}
-              </div>
-              {Array.from({ length: 9 }, (_, col) => {
-                const piece = gameState.board[row][col];
-                const isSelected = gameState.selectedPosition?.row === row && gameState.selectedPosition?.col === col;
-                const isValidMove = gameState.validMoves.some(m => m.row === row && m.col === col);
-                const isLastMove = gameState.moveHistory.length > 0 &&
-                  (gameState.moveHistory[gameState.moveHistory.length - 1].to.row === row &&
-                   gameState.moveHistory[gameState.moveHistory.length - 1].to.col === col);
-
-                return (
-                  <div
-                    key={col}
-                    onClick={() => handleCellClick(row, col)}
-                    className={`
-                      w-9 h-9 sm:w-11 sm:h-11 border border-amber-700/50 flex items-center justify-center
-                      cursor-pointer relative transition-all duration-100
-                      ${isSelected ? 'bg-yellow-300 shadow-inner' : ''}
-                      ${isValidMove && !piece ? 'bg-green-200/70' : ''}
-                      ${isValidMove && piece ? 'bg-red-100' : ''}
-                      ${isLastMove && !isSelected && !isValidMove ? 'bg-blue-100/50' : ''}
-                      ${!piece && !isValidMove && !isSelected ? 'hover:bg-amber-50' : ''}
-                    `}
-                  >
-                    {piece && (
-                      <span className={`
-                        text-base sm:text-lg font-bold select-none leading-none
-                        ${piece.player === 'sente' ? 'text-gray-900' : 'text-gray-800'}
-                        ${piece.player === 'gote' ? 'rotate-180' : ''}
-                        ${isSelected ? 'scale-110' : ''}
-                        ${piece.promoted ? 'text-red-700' : ''}
-                      `}>
-                        {getPieceDisplay(piece)}
-                      </span>
-                    )}
-                    {isValidMove && !piece && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 opacity-50"></div>
-                    )}
-                    {isValidMove && piece && (
-                      <div className="absolute inset-0.5 border-2 border-red-400 rounded-sm opacity-70"></div>
-                    )}
+            return (
+              <div
+                key={idx}
+                onClick={() => handleCellClick(row, col)}
+                className={`
+                  w-14 h-14 sm:w-16 sm:h-16 border border-amber-900/40
+                  flex items-center justify-center relative cursor-pointer
+                  transition-all duration-100
+                  ${isCenterCell ? 'bg-amber-500/30' : 'bg-amber-600/50'}
+                  ${isSelected ? 'bg-yellow-400/50 ring-2 ring-yellow-300' : ''}
+                  ${isValidMove ? 'bg-green-400/40' : ''}
+                  ${canPlaceHere && !cell ? 'bg-blue-300/30 hover:bg-blue-300/50' : ''}
+                  ${!cell && !isValidMove && !canPlaceHere ? 'hover:bg-amber-500/30' : ''}
+                `}
+              >
+                {/* 中央マーク */}
+                {isCenterCell && !cell && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-3 h-3 rounded-full bg-amber-400/50"></div>
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+                )}
 
-        {/* 成りダイアログ */}
-        {showPromotion && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded z-10 backdrop-blur-sm">
-            <div className="bg-white p-6 rounded-xl shadow-2xl border-2 border-amber-300">
-              <p className="text-lg font-bold mb-4 text-center text-amber-900">成りますか？</p>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => handlePromotion(true)}
-                  className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-bold shadow-lg transition-all hover:scale-105"
-                >
-                  成る
-                </button>
-                <button
-                  onClick={() => handlePromotion(false)}
-                  className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 font-bold shadow-lg transition-all hover:scale-105"
-                >
-                  成らない
-                </button>
+                {/* 駒 */}
+                {cell && (
+                  <div className={`
+                    w-10 h-10 sm:w-12 sm:h-12 rounded-full shadow-lg flex items-center justify-center
+                    transition-transform duration-150
+                    ${cell === 'player1'
+                      ? 'bg-gradient-to-br from-white to-gray-200 border-2 border-gray-300'
+                      : 'bg-gradient-to-br from-gray-700 to-gray-900 border-2 border-gray-600'}
+                    ${isSelected ? 'scale-110' : ''}
+                    ${isValidMove ? 'ring-2 ring-red-400' : ''}
+                  `}>
+                    <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${
+                      cell === 'player1' ? 'bg-gray-300' : 'bg-gray-500'
+                    }`}></div>
+                  </div>
+                )}
+
+                {/* 有効手インジケータ */}
+                {isValidMove && !cell && (
+                  <div className="w-4 h-4 rounded-full bg-green-400 opacity-60 animate-pulse"></div>
+                )}
+                {canPlaceHere && !cell && gameState.phase === 'placing' && (
+                  <div className="w-3 h-3 rounded-full bg-blue-400 opacity-40"></div>
+                )}
               </div>
-            </div>
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
 
-      {/* 先手の持ち駒 */}
-      <div className="mt-2 w-full max-w-lg px-2">
-        <div className="text-xs text-amber-700 mb-0.5 font-medium">👤 あなた（先手）持ち駒:</div>
-        {renderHand(gameState.senteHand, 'sente', true)}
+      {/* フェーズ表示 */}
+      <div className="mt-3 flex gap-4 text-xs text-amber-300">
+        <span className={gameState.phase === 'placing' ? 'font-bold text-amber-100' : ''}>
+          📍 配置フェーズ
+        </span>
+        <span>|</span>
+        <span className={gameState.phase === 'moving' ? 'font-bold text-amber-100' : ''}>
+          🏃 移動フェーズ
+        </span>
       </div>
 
       {/* リセットボタン */}
       <button
         onClick={handleReset}
-        className="mt-3 px-6 py-2.5 bg-amber-700 text-white rounded-full hover:bg-amber-800 font-medium shadow-lg transition-all hover:scale-105 active:scale-95"
+        className="mt-3 px-6 py-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 font-medium shadow-lg transition-all hover:scale-105 active:scale-95"
       >
         🔄 新しいゲーム
       </button>
 
-      {/* 操作説明 */}
-      <div className="mt-4 text-xs sm:text-sm text-amber-700 text-center max-w-md bg-amber-50 rounded-lg p-3 border border-amber-200">
-        <p className="font-bold mb-1">📖 操作方法</p>
-        <p>• 駒をクリックして選択 → 移動先をクリック</p>
-        <p>• 持ち駒をクリック → 盤面の打てる場所に打つ</p>
-        <p>• <span className="inline-block w-2 h-2 rounded-full bg-green-500 opacity-50 mr-1"></span>緑=移動可能 <span className="inline-block w-2 h-2 border border-red-400 mr-1"></span>赤枠=取れる駒</p>
+      {/* ルール説明 */}
+      <div className="mt-4 text-xs sm:text-sm text-amber-200 text-center max-w-md bg-amber-900/50 rounded-lg p-4 border border-amber-700">
+        <p className="font-bold mb-2 text-amber-100">📖 シーガのルール</p>
+        <div className="text-left space-y-1">
+          <p>① <strong>配置フェーズ</strong>: 交互に2個ずつ駒を置く（中央以外）</p>
+          <p>② <strong>移動フェーズ</strong>: 上下左右に1マス移動</p>
+          <p>③ <strong>挟み取り</strong>: 相手の駒を縦横に挟むと取れる</p>
+          <p>④ <strong>連続キャプチャ</strong>: 取ったらもう一度動ける</p>
+          <p>⑤ <strong>勝利条件</strong>: 相手の駒を1個以下にする</p>
+        </div>
       </div>
     </div>
   );
