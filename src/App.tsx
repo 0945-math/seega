@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   GameState, Position, Player, PIECES_PER_PLAYER, createInitialState, getValidMoves,
   movePiece, isFirstMove, countPieces,
@@ -19,55 +19,38 @@ export default function App() {
     setHint(null);
   };
 
-  useEffect(() => {
-    if (state.gameOver || state.currentPlayer !== 'player2') {
-      setThinking(false);
-      return;
+  const runAITurn = (start: GameState): GameState => {
+    let s = start;
+    for (let i = 0; i < PIECES_PER_PLAYER && !s.gameOver && s.currentPlayer === 'player2'; i++) {
+      const move = getMCTSMove(s);
+      if (!move?.from) {
+        return { ...s, currentPlayer: 'player1', canCapture: false, message: 'あなたの番です' };
+      }
+      s = movePiece(s, move.from, move.to);
+      if (!s.canCapture) break;
     }
+    return s;
+  };
 
-    let cancelled = false;
-    setThinking(true);
 
-    // AIの計算は1ターンにつき必ず1回だけ実行する。
-    // 連続捕獲もここで有限回処理するため、Reactのeffect再実行には依存しない。
-    const timer = window.setTimeout(() => {
-      let s = state;
-      try {
-        for (let i = 0; i < PIECES_PER_PLAYER && !s.gameOver && s.currentPlayer === 'player2'; i++) {
-          const move = getMCTSMove(s);
-          if (!move?.from) {
-            // 合法手がない場合はAIの手番を終了させる。
-            s = { ...s, currentPlayer: 'player1', canCapture: false, message: 'あなたの番です' };
-            break;
-          }
-          s = movePiece(s, move.from, move.to);
-          if (!s.canCapture) break;
-        }
-      } catch (error) {
-        console.error('AI move failed:', error);
-        s = { ...s, currentPlayer: 'player1', canCapture: false, message: 'AIの手番を終了しました。あなたの番です' };
-      }
-
-      if (!cancelled) {
-        setState(s);
-        setThinking(false);
-      }
-    }, 50);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [state]);
 
   const choose = (pos: Position) => {
     if (thinking || state.gameOver || state.currentPlayer !== 'player1') return;
     if (selected) {
       if (getValidMoves(state.board, selected).some(p => p.row === pos.row && p.col === pos.col) &&
           (!isFirstMove(state) || (pos.row === CENTER && pos.col === CENTER))) {
-        setState(movePiece(state, selected, pos));
+        const afterPlayer = movePiece(state, selected, pos);
         setSelected(null);
         setHint(null);
+        if (afterPlayer.currentPlayer === 'player2' && !afterPlayer.gameOver) {
+          setThinking(true);
+          window.setTimeout(() => {
+            setState(runAITurn(afterPlayer));
+            setThinking(false);
+          }, 0);
+        } else {
+          setState(afterPlayer);
+        }
         return;
       }
     }
