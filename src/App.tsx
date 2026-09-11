@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  GameState, Position, Player, createInitialState, getValidMoves,
+  GameState, Position, Player, PIECES_PER_PLAYER, createInitialState, getValidMoves,
   movePiece, isFirstMove, countPieces,
 } from './game/seega';
 import { getMCTSMove } from './game/mcts';
@@ -20,43 +20,45 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (state.gameOver || state.currentPlayer !== 'player2') return;
+    if (state.gameOver || state.currentPlayer !== 'player2') {
+      setThinking(false);
+      return;
+    }
 
     let cancelled = false;
     setThinking(true);
 
+    // AIの計算は1ターンにつき必ず1回だけ実行する。
+    // 連続捕獲もここで有限回処理するため、Reactのeffect再実行には依存しない。
     const timer = window.setTimeout(() => {
+      let s = state;
       try {
-        if (cancelled) return;
-
-        let s = state;
-        // 連続キャプチャはルール上同一手番なので継続する。
-        // ただし盤面上の相手駒数には上限があるため、上限を明示して
-        // UI側で無限ループを起こさない。
-        for (let i = 0; i < 12 && !s.gameOver && s.currentPlayer === 'player2'; i++) {
+        for (let i = 0; i < PIECES_PER_PLAYER && !s.gameOver && s.currentPlayer === 'player2'; i++) {
           const move = getMCTSMove(s);
-          if (!move?.from) break;
-
-          const next = movePiece(s, move.from, move.to);
-          if (next === s) break;
-          s = next;
-
+          if (!move?.from) {
+            // 合法手がない場合はAIの手番を終了させる。
+            s = { ...s, currentPlayer: 'player1', canCapture: false, message: 'あなたの番です' };
+            break;
+          }
+          s = movePiece(s, move.from, move.to);
           if (!s.canCapture) break;
         }
-
-        if (!cancelled) setState(s);
       } catch (error) {
         console.error('AI move failed:', error);
-      } finally {
-        if (!cancelled) setThinking(false);
+        s = { ...s, currentPlayer: 'player1', canCapture: false, message: 'AIの手番を終了しました。あなたの番です' };
       }
-    }, 80);
+
+      if (!cancelled) {
+        setState(s);
+        setThinking(false);
+      }
+    }, 50);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [state.gameOver, state.currentPlayer]);
+  }, [state]);
 
   const choose = (pos: Position) => {
     if (thinking || state.gameOver || state.currentPlayer !== 'player1') return;
