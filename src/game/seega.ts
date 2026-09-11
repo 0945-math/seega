@@ -11,11 +11,19 @@ export interface Position {
   col: number;
 }
 
+export interface MoveRecord {
+  type: 'place' | 'move';
+  player: Player;
+  from?: Position;
+  to: Position;
+  captured?: Position[];
+}
+
 export interface GameState {
   board: Board;
   currentPlayer: Player;
   phase: Phase;
-  piecesPlacedThisTurn: number; // 配置フェーズでこのターンに置いた数（0, 1, 2）
+  piecesPlacedThisTurn: number;
   totalPlaced: { player1: number; player2: number };
   selectedPos: Position | null;
   validMoves: Position[];
@@ -23,12 +31,15 @@ export interface GameState {
   gameOver: boolean;
   winner: Player | null;
   message: string;
-  canCapture: boolean; // 連続キャプチャ中
+  canCapture: boolean;
   boardSize: number;
+  moveHistory: MoveRecord[];
+  lastMove: { from?: Position; to: Position } | null;
+  capturedPositions: Position[];
 }
 
 const BOARD_SIZE = 5;
-const PIECES_PER_PLAYER = 12; // (25-1)/2 = 12
+export const PIECES_PER_PLAYER = 12;
 
 export function createInitialState(): GameState {
   const board: Board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null));
@@ -43,19 +54,20 @@ export function createInitialState(): GameState {
     capturedBy: { player1: 0, player2: 0 },
     gameOver: false,
     winner: null,
-    message: '配置フェーズ：あなたの駒を置いてください（2個/ターン）',
+    message: '配置フェーズ：あなたの駒を2個置いてください',
     canCapture: false,
     boardSize: BOARD_SIZE,
+    moveHistory: [],
+    lastMove: null,
+    capturedPositions: [],
   };
 }
 
-// 中央かどうか
 export function isCenter(pos: Position): boolean {
   const center = Math.floor(BOARD_SIZE / 2);
   return pos.row === center && pos.col === center;
 }
 
-// 配置フェーズ：駒を置けるか
 export function canPlace(state: GameState, pos: Position): boolean {
   if (state.phase !== 'placing') return false;
   if (state.board[pos.row][pos.col] !== null) return false;
@@ -63,7 +75,6 @@ export function canPlace(state: GameState, pos: Position): boolean {
   return true;
 }
 
-// 駒を置く
 export function placePiece(state: GameState, pos: Position): GameState {
   if (!canPlace(state, pos)) return state;
 
@@ -75,8 +86,6 @@ export function placePiece(state: GameState, pos: Position): GameState {
   const newPlacedThisTurn = state.piecesPlacedThisTurn + 1;
 
   const nextPlayer: Player = state.currentPlayer === 'player1' ? 'player2' : 'player1';
-
-  // 配置フェーズ終了チェック
   const allPlaced = newTotalPlaced.player1 >= PIECES_PER_PLAYER && newTotalPlaced.player2 >= PIECES_PER_PLAYER;
 
   let newPhase: Phase = state.phase;
@@ -86,15 +95,18 @@ export function placePiece(state: GameState, pos: Position): GameState {
     newPhase = 'moving';
     newMessage = '移動フェーズ開始！先手の最初の一手は中央へ';
   } else if (newPlacedThisTurn >= 2) {
-    // 2個置き終わったら相手ターン
-    newMessage = `配置フェーズ：${nextPlayer === 'player1' ? 'あなた' : 'AI'}の駒を置いてください（2個/ターン）`;
+    newMessage = `配置フェーズ：${nextPlayer === 'player1' ? 'あなた' : 'AI'}の駒を2個置いてください`;
   } else {
-    // あと1個
-    newMessage = `あと1個置いてください（${state.currentPlayer === 'player1' ? 'あなた' : 'AI'}）`;
+    newMessage = `あと1個置いてください`;
   }
 
-  // ターン切り替え判定
   const shouldSwitchTurn = newPlacedThisTurn >= 2 || allPlaced;
+
+  const newMoveHistory = [...state.moveHistory, {
+    type: 'place' as const,
+    player: state.currentPlayer,
+    to: pos,
+  }];
 
   return {
     ...state,
@@ -106,10 +118,12 @@ export function placePiece(state: GameState, pos: Position): GameState {
     message: newMessage || state.message,
     selectedPos: null,
     validMoves: [],
+    moveHistory: newMoveHistory,
+    lastMove: { to: pos },
+    capturedPositions: [],
   };
 }
 
-// 移動可能な位置を取得
 export function getValidMoves(board: Board, pos: Position): Position[] {
   const moves: Position[] = [];
   const directions = [
@@ -132,12 +146,10 @@ export function getValidMoves(board: Board, pos: Position): Position[] {
   return moves;
 }
 
-// 挟み取りチェック：移動後に相手の駒を取れるか
 export function getCaptures(board: Board, pos: Position, player: Player): Position[] {
   const captures: Position[] = [];
   const opponent: Player = player === 'player1' ? 'player2' : 'player1';
 
-  // 移動した駒の上下左右をチェック
   const directions = [
     { dr: -1, dc: 0 },
     { dr: 1, dc: 0 },
@@ -146,13 +158,11 @@ export function getCaptures(board: Board, pos: Position, player: Player): Positi
   ];
 
   for (const dir of directions) {
-    // 隣が相手の駒
     const adjRow = pos.row + dir.dr;
     const adjCol = pos.col + dir.dc;
     if (adjRow < 0 || adjRow >= BOARD_SIZE || adjCol < 0 || adjCol >= BOARD_SIZE) continue;
     if (board[adjRow][adjCol] !== opponent) continue;
 
-    // その向こうが自分の駒
     const beyondRow = adjRow + dir.dr;
     const beyondCol = adjCol + dir.dc;
     if (beyondRow < 0 || beyondRow >= BOARD_SIZE || beyondCol < 0 || beyondCol >= BOARD_SIZE) continue;
@@ -164,32 +174,29 @@ export function getCaptures(board: Board, pos: Position, player: Player): Positi
   return captures;
 }
 
-// 駒を移動する
 export function movePiece(state: GameState, from: Position, to: Position): GameState {
   const newBoard = state.board.map(row => [...row]);
   const player = state.currentPlayer;
-  const opponent: Player = player === 'player1' ? 'player2' : 'player1';
 
-  // 駒を移動
   newBoard[from.row][from.col] = null;
   newBoard[to.row][to.col] = player;
 
-  // 挟み取りチェック
   const captures = getCaptures(newBoard, to, player);
 
   let newCapturedBy = { ...state.capturedBy };
   let newBoardAfterCaptures = newBoard;
+  const capturedPositions: Position[] = [];
 
   if (captures.length > 0) {
-    // 挟んだ駒を取り除く
     newBoardAfterCaptures = newBoard.map(row => [...row]);
     for (const cap of captures) {
       newBoardAfterCaptures[cap.row][cap.col] = null;
       newCapturedBy[player]++;
+      capturedPositions.push(cap);
     }
   }
 
-  // 勝利判定
+  const opponent: Player = player === 'player1' ? 'player2' : 'player1';
   const opponentPieces = countPieces(newBoardAfterCaptures, opponent);
   let gameOver = false;
   let winner: Player | null = null;
@@ -199,18 +206,25 @@ export function movePiece(state: GameState, from: Position, to: Position): GameS
     winner = player;
   }
 
-  // 連続キャプチャの判定
   const canContinueCapture = captures.length > 0 && !gameOver && hasAnyCapturePossible(newBoardAfterCaptures, player);
 
   let message = '';
   if (gameOver) {
     message = player === 'player1' ? '🎉 あなたの勝ち！' : '😢 AIの勝ち...';
   } else if (canContinueCapture) {
-    message = '連続キャプチャ！もう一度移動できます';
+    message = `連続キャプチャ！${captures.length}個取った！もう一度移動できます`;
   } else {
     const nextPlayer: Player = player === 'player1' ? 'player2' : 'player1';
     message = nextPlayer === 'player1' ? 'あなたの番です' : 'AIの番です';
   }
+
+  const newMoveHistory = [...state.moveHistory, {
+    type: 'move' as const,
+    player,
+    from,
+    to,
+    captured: captures.length > 0 ? captures : undefined,
+  }];
 
   return {
     ...state,
@@ -223,10 +237,12 @@ export function movePiece(state: GameState, from: Position, to: Position): GameS
     winner,
     message,
     canCapture: canContinueCapture,
+    moveHistory: newMoveHistory,
+    lastMove: { from, to },
+    capturedPositions,
   };
 }
 
-// 盤面の駒数を数える
 export function countPieces(board: Board, player: Player): number {
   let count = 0;
   for (let r = 0; r < BOARD_SIZE; r++) {
@@ -237,7 +253,6 @@ export function countPieces(board: Board, player: Player): number {
   return count;
 }
 
-// 何か1つでもキャプチャ可能な手があるか
 function hasAnyCapturePossible(board: Board, player: Player): boolean {
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
@@ -255,7 +270,6 @@ function hasAnyCapturePossible(board: Board, player: Player): boolean {
   return false;
 }
 
-// プレイヤーに移動可能な駒があるか
 export function hasAnyValidMove(board: Board, player: Player): boolean {
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
@@ -267,7 +281,6 @@ export function hasAnyValidMove(board: Board, player: Player): boolean {
   return false;
 }
 
-// 先手の最初の移動かどうか（中央に移動する必要がある）
 export function isFirstMove(state: GameState): boolean {
   return state.phase === 'moving' &&
     state.capturedBy.player1 === 0 && state.capturedBy.player2 === 0 &&
@@ -278,7 +291,6 @@ export function isFirstMove(state: GameState): boolean {
 
 // ===== AI =====
 
-// 評価関数
 function evaluate(board: Board, aiPlayer: Player): number {
   const opponent: Player = aiPlayer === 'player1' ? 'player2' : 'player1';
   const myPieces = countPieces(board, aiPlayer);
@@ -286,11 +298,9 @@ function evaluate(board: Board, aiPlayer: Player): number {
 
   let score = (myPieces - oppPieces) * 100;
 
-  // 勝利/敗北
   if (oppPieces <= 1) return 10000;
   if (myPieces <= 1) return -10000;
 
-  // 中央制御ボーナス
   const center = Math.floor(BOARD_SIZE / 2);
   if (board[center][center] === aiPlayer) score += 30;
 
@@ -298,7 +308,6 @@ function evaluate(board: Board, aiPlayer: Player): number {
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== aiPlayer) continue;
-      // 各駒について、隣接する敵駒を挟める可能性
       const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
       for (const dir of dirs) {
         const ar = r + dir.dr;
@@ -308,14 +317,14 @@ function evaluate(board: Board, aiPlayer: Player): number {
           const br = ar + dir.dr;
           const bc = ac + dir.dc;
           if (br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE && board[br][bc] === null) {
-            score += 10; // 挟めるチャンス
+            score += 15;
           }
         }
       }
     }
   }
 
-  // 自分が挟まれているリスクのペナルティ
+  // 挟まれるリスクのペナルティ
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== aiPlayer) continue;
@@ -328,7 +337,7 @@ function evaluate(board: Board, aiPlayer: Player): number {
         if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE &&
             br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE) {
           if (board[ar][ac] === opponent && board[br][bc] === null) {
-            score -= 8; // 挟まれるリスク
+            score -= 10;
           }
         }
       }
@@ -338,7 +347,6 @@ function evaluate(board: Board, aiPlayer: Player): number {
   return score;
 }
 
-// AIの配置手を選択
 function getAIPlacement(state: GameState): Position[] {
   const placements: Position[] = [];
   let currentBoard = state.board.map(row => [...row]);
@@ -379,11 +387,9 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
   let score = 0;
   const center = Math.floor(BOARD_SIZE / 2);
 
-  // 中央に近いほど良い
   const distToCenter = Math.abs(pos.row - center) + Math.abs(pos.col - center);
-  score += (4 - distToCenter) * 5;
+  score += (4 - distToCenter) * 8;
 
-  // 挟める位置かチェック
   const dirs = [{ dr: -1, dc: 0 }, { dr: 1, dc: 0 }, { dr: 0, dc: -1 }, { dr: 0, dc: 1 }];
   for (const dir of dirs) {
     const ar = pos.row + dir.dr;
@@ -391,16 +397,14 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
     if (ar < 0 || ar >= BOARD_SIZE || ac < 0 || ac >= BOARD_SIZE) continue;
 
     if (board[ar][ac] === opponent) {
-      // 相手の駒の反対側が自分の駒なら挟める
       const br = ar + dir.dr;
       const bc = ac + dir.dc;
       if (br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE && board[br][bc] === player) {
-        score += 50;
+        score += 60;
       }
     }
   }
 
-  // 自分が挟まれるリスク
   for (const dir of dirs) {
     const ar = pos.row + dir.dr;
     const ac = pos.col + dir.dc;
@@ -409,7 +413,7 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
     if (ar >= 0 && ar < BOARD_SIZE && ac >= 0 && ac < BOARD_SIZE &&
         br >= 0 && br < BOARD_SIZE && bc >= 0 && bc < BOARD_SIZE) {
       if (board[ar][ac] === opponent && board[br][bc] === null) {
-        score -= 15;
+        score -= 20;
       }
     }
   }
@@ -417,7 +421,6 @@ function evaluatePlacement(board: Board, player: Player, pos: Position): number 
   return score;
 }
 
-// AIの移動手を選択
 interface AIMove {
   from: Position;
   to: Position;
@@ -428,7 +431,6 @@ function getAIMove(state: GameState, depth: number = 3): { from: Position; to: P
   const aiPlayer = state.currentPlayer;
   const opponent: Player = aiPlayer === 'player1' ? 'player2' : 'player1';
 
-  // 先手の最初の移動は中央へ
   const center = Math.floor(BOARD_SIZE / 2);
   const isFirst = state.phase === 'moving' &&
     state.capturedBy.player1 === 0 && state.capturedBy.player2 === 0 &&
@@ -437,7 +439,6 @@ function getAIMove(state: GameState, depth: number = 3): { from: Position; to: P
     state.board[center][center] === null;
 
   if (isFirst && aiPlayer === 'player1') {
-    // 中央に最も近い駒を探す
     let bestFrom: Position | null = null;
     let bestDist = Infinity;
     for (let r = 0; r < BOARD_SIZE; r++) {
@@ -458,33 +459,28 @@ function getAIMove(state: GameState, depth: number = 3): { from: Position; to: P
     }
   }
 
-  // 全合法手を生成
   const allMoves: AIMove[] = [];
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (state.board[r][c] !== aiPlayer) continue;
       const moves = getValidMoves(state.board, { row: r, col: c });
       for (const move of moves) {
-        // 先手の最初の移動で中央以外は無視
         if (isFirst && aiPlayer === 'player1' && !(move.row === center && move.col === center)) {
           continue;
         }
 
-        // シミュレート
         const testBoard = state.board.map(row => [...row]);
         testBoard[r][c] = null;
         testBoard[move.row][move.col] = aiPlayer;
         const captures = getCaptures(testBoard, { row: move.row, col: move.col }, aiPlayer);
         let score = 0;
 
-        // キャプチャをシミュレート
         const afterBoard = testBoard.map(row => [...row]);
         for (const cap of captures) {
           afterBoard[cap.row][cap.col] = null;
-          score += 100;
+          score += 150;
         }
 
-        // 追加探索
         if (depth > 0) {
           score += minimax(afterBoard, depth - 1, -Infinity, Infinity, false, aiPlayer);
         } else {
@@ -498,7 +494,6 @@ function getAIMove(state: GameState, depth: number = 3): { from: Position; to: P
 
   if (allMoves.length === 0) return null;
 
-  // 最高スコアの手を選択
   allMoves.sort((a, b) => b.score - a.score);
   return { from: allMoves[0].from, to: allMoves[0].to };
 }
@@ -511,13 +506,11 @@ function minimax(board: Board, depth: number, alpha: number, beta: number, maxim
     return evaluate(board, aiPlayer);
   }
 
-  // 駒数チェック
   const myPieces = countPieces(board, aiPlayer);
   const oppPieces = countPieces(board, opponent);
   if (oppPieces <= 1) return 10000;
   if (myPieces <= 1) return -10000;
 
-  // 全合法手を生成
   let bestEval = maximizing ? -Infinity : Infinity;
 
   for (let r = 0; r < BOARD_SIZE; r++) {
