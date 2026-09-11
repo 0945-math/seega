@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  GameState, Position, Player, PIECES_PER_PLAYER, createInitialState, getValidMoves,
+  GameState, Position, Player, createInitialState, getValidMoves,
   movePiece, isFirstMove, countPieces,
 } from './game/seega';
 import { getAIMoveFast } from './game/ai';
@@ -12,24 +12,61 @@ export default function App() {
   const [selected, setSelected] = useState<Position | null>(null);
   const [hint, setHint] = useState<{from?: Position; to: Position} | null>(null);
 
+  const aiTimerRef = useRef<number | null>(null);
+
+  const stopAITurn = () => {
+    if (aiTimerRef.current !== null) {
+      window.clearTimeout(aiTimerRef.current);
+      aiTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => stopAITurn, []);
+
   const reset = () => {
+    stopAITurn();
     setState(createInitialState());
     setSelected(null);
     setHint(null);
   };
 
-  const runAITurn = (start: GameState): GameState => {
-    let s = start;
-    for (let i = 0; i < PIECES_PER_PLAYER && !s.gameOver && s.currentPlayer === 'player2'; i++) {
-      const move = getAIMoveFast(s);
-      if (!move?.from) {
-        return { ...s, currentPlayer: 'player1', canCapture: false, message: 'あなたの番です' };
+  // AI計算を1手ずつ別タスクに分ける。
+  // 同期ループで連続手を処理すると、Reactはイベント処理が終わるまで再描画できず、
+  // 「AIが長考している」ように見える。1手ごとにブラウザへ制御を返す。
+  const runAITurn = (start: GameState) => {
+    stopAITurn();
+    setState(start);
+
+    const step = (current: GameState) => {
+      if (current.gameOver || current.currentPlayer !== 'player2') {
+        aiTimerRef.current = null;
+        return;
       }
-      const next = movePiece(s, move.from, move.to);
-      s = next;
-      if (!s.canCapture) break;
-    }
-    return s;
+
+      const move = getAIMoveFast(current);
+      if (!move?.from) {
+        const finished = {
+          ...current,
+          currentPlayer: 'player1' as Player,
+          canCapture: false,
+          message: 'あなたの番です',
+        };
+        setState(finished);
+        aiTimerRef.current = null;
+        return;
+      }
+
+      const nextState = movePiece(current, move.from, move.to);
+      setState(nextState);
+
+      if (!nextState.gameOver && nextState.currentPlayer === 'player2') {
+        aiTimerRef.current = window.setTimeout(() => step(nextState), 30);
+      } else {
+        aiTimerRef.current = null;
+      }
+    };
+
+    aiTimerRef.current = window.setTimeout(() => step(start), 0);
   };
 
 
@@ -70,7 +107,7 @@ export default function App() {
       <header className="w-full max-w-3xl flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">シーガ</h1>
-          <p className="text-sm text-amber-300/70">特別ルール版 · MCTS AI</p>
+          <p className="text-sm text-amber-300/70">特別ルール版 · 高速AI</p>
         </div>
         <div className="flex gap-2">
           <button onClick={showHint} className="px-3 py-2 rounded bg-cyan-900 hover:bg-cyan-800">ヒント</button>
