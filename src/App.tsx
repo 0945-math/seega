@@ -78,13 +78,13 @@ export default function App() {
       setState(nextState);
 
       if (!nextState.gameOver && nextState.currentPlayer === 'player2') {
-        aiTimerRef.current = window.setTimeout(() => step(nextState), 30);
+        aiTimerRef.current = window.requestAnimationFrame(() => step(nextState));
       } else {
         aiTimerRef.current = null;
       }
     };
 
-    aiTimerRef.current = window.setTimeout(() => step(start), 0);
+    aiTimerRef.current = window.requestAnimationFrame(() => step(start));
   };
 
 
@@ -159,7 +159,7 @@ export default function App() {
       <div className="mt-6 w-full max-w-[520px] bg-stone-900 rounded-xl p-5 text-sm space-y-2">
         <h2 className="font-bold text-lg">ルール</h2>
         <p>初期盤面は12個ずつの特別配置。中央だけ空いています。</p>
-        <p>上下左右に1マス移動します。先手の最初の一手は中央です。</p>
+        <p>上下左右・斜めを含む8方向に1マス移動します。先手の最初の一手は中央です。</p>
         <p>相手を自分の駒で挟むと捕獲し、捕獲可能なら同じ手番を継続します。</p>
         <p>相手の駒が1個以下になると勝利です。</p>
       </div>
