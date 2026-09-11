@@ -9,3 +9,5 @@
 公開URL: https://0945-math.github.io/seega/
 
 GitHub Pagesの公開元は `main` ブランチです。
+
+Pages deployment configuration verified.
