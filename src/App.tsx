@@ -21,93 +21,113 @@ const CENTER = Math.floor(BOARD_SIZE / 2);
 // サウンドエフェクト
 class SoundManager {
   private audioContext: AudioContext | null = null;
+  private initialized = false;
 
   init() {
-    if (!this.audioContext) {
+    if (this.initialized) return;
+    try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.initialized = true;
+    } catch (e) {
+      console.warn('AudioContext not supported');
     }
   }
 
   playPlace() {
-    this.init();
     if (!this.audioContext) return;
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-    oscillator.frequency.value = 400;
-    oscillator.type = 'sine';
-    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.1);
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      oscillator.frequency.value = 400;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + 0.1);
+    } catch (e) {
+      console.warn('Sound playback failed');
+    }
   }
 
   playMove() {
-    this.init();
     if (!this.audioContext) return;
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-    oscillator.frequency.value = 300;
-    oscillator.type = 'triangle';
-    gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.15);
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      oscillator.frequency.value = 300;
+      oscillator.type = 'triangle';
+      gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + 0.15);
+    } catch (e) {
+      console.warn('Sound playback failed');
+    }
   }
 
   playCapture() {
-    this.init();
     if (!this.audioContext) return;
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-    oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.3);
-    oscillator.type = 'sawtooth';
-    gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + 0.3);
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.3);
+      oscillator.type = 'sawtooth';
+      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + 0.3);
+    } catch (e) {
+      console.warn('Sound playback failed');
+    }
   }
 
   playWin() {
-    this.init();
     if (!this.audioContext) return;
-    const notes = [523, 659, 784, 1047];
-    notes.forEach((freq, i) => {
-      const oscillator = this.audioContext!.createOscillator();
-      const gainNode = this.audioContext!.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext!.destination);
-      oscillator.frequency.value = freq;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.15);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.15 + 0.3);
-      oscillator.start(this.audioContext!.currentTime + i * 0.15);
-      oscillator.stop(this.audioContext!.currentTime + i * 0.15 + 0.3);
-    });
+    try {
+      const notes = [523, 659, 784, 1047];
+      notes.forEach((freq, i) => {
+        const oscillator = this.audioContext!.createOscillator();
+        const gainNode = this.audioContext!.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext!.destination);
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.15);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.15 + 0.3);
+        oscillator.start(this.audioContext!.currentTime + i * 0.15);
+        oscillator.stop(this.audioContext!.currentTime + i * 0.15 + 0.3);
+      });
+    } catch (e) {
+      console.warn('Sound playback failed');
+    }
   }
 
   playLose() {
-    this.init();
     if (!this.audioContext) return;
-    const notes = [400, 350, 300, 250];
-    notes.forEach((freq, i) => {
-      const oscillator = this.audioContext!.createOscillator();
-      const gainNode = this.audioContext!.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext!.destination);
-      oscillator.frequency.value = freq;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.2);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.2 + 0.4);
-      oscillator.start(this.audioContext!.currentTime + i * 0.2);
-      oscillator.stop(this.audioContext!.currentTime + i * 0.2 + 0.4);
-    });
+    try {
+      const notes = [400, 350, 300, 250];
+      notes.forEach((freq, i) => {
+        const oscillator = this.audioContext!.createOscillator();
+        const gainNode = this.audioContext!.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext!.destination);
+        oscillator.frequency.value = freq;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.3, this.audioContext!.currentTime + i * 0.2);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext!.currentTime + i * 0.2 + 0.4);
+        oscillator.start(this.audioContext!.currentTime + i * 0.2);
+        oscillator.stop(this.audioContext!.currentTime + i * 0.2 + 0.4);
+      });
+    } catch (e) {
+      console.warn('Sound playback failed');
+    }
   }
 }
 
@@ -137,17 +157,21 @@ function App() {
   useEffect(() => {
     if (gameState.gameOver) return;
     if (gameState.currentPlayer !== aiSide) return;
+    if (gameState.phase === 'placing' && gameState.piecesPlacedThisTurn > 0) return; // まだ1個も置いていない時だけ
 
     setIsThinking(true);
     const timer = setTimeout(() => {
       const state = gameStateRef.current;
 
       if (state.phase === 'placing') {
-        const pos = getAIPlacement(state);
-        const newState = placePiece(state, pos);
+        const placements = getAIPlacement(state);
+        let newState = state;
+        for (const pos of placements) {
+          newState = placePiece(newState, pos);
+        }
         newState.message = 'あなたの番です';
         setGameState(newState);
-        triggerAnimation([pos]);
+        triggerAnimation(placements);
         if (soundEnabled) soundManager.playPlace();
       } else if (state.phase === 'moving') {
         const aiMove = getAIMove(state, difficulty);
@@ -186,7 +210,7 @@ function App() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
+  }, [gameState.currentPlayer, gameState.gameOver, gameState.phase, gameState.piecesPlacedThisTurn, aiSide, playerSide, difficulty, triggerAnimation, soundEnabled]);
 
   // ゲーム終了時のサウンド
   useEffect(() => {
@@ -203,6 +227,11 @@ function App() {
     if (gameState.gameOver || isThinking) return;
     if (gameState.currentPlayer !== playerSide) return;
 
+    // サウンド初期化
+    if (soundEnabled && !soundManager['initialized']) {
+      soundManager.init();
+    }
+
     const pos: Position = { row, col };
 
     if (gameState.phase === 'placing') {
@@ -211,6 +240,11 @@ function App() {
         setGameState(newState);
         triggerAnimation([pos]);
         if (soundEnabled) soundManager.playPlace();
+        
+        // 2個置いたらAIのターン
+        if (newState.piecesPlacedThisTurn === 0 && newState.currentPlayer === 'player2') {
+          // AIのターンはuseEffectで処理
+        }
       }
       return;
     }
@@ -293,23 +327,25 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1a0f05] via-[#2d1810] to-[#1a0f05] flex flex-col items-center py-4 px-2 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#1a0f05] via-[#2d1810] to-[#1a0f05] flex flex-col items-center py-6 px-2 relative overflow-hidden">
       {/* 背景装飾 */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 opacity-[0.04] pointer-events-none overflow-hidden">
         <div className="absolute top-10 left-10 text-7xl rotate-12">🏺</div>
         <div className="absolute top-32 right-16 text-5xl -rotate-12">🐫</div>
         <div className="absolute bottom-32 left-16 text-6xl rotate-6">🌙</div>
         <div className="absolute bottom-16 right-10 text-7xl -rotate-6">⚱️</div>
+        <div className="absolute top-1/2 left-1/4 text-4xl rotate-45">✨</div>
+        <div className="absolute top-1/3 right-1/4 text-4xl -rotate-45">✨</div>
       </div>
 
       {/* タイトル */}
-      <div className="relative z-10 text-center mb-4">
-        <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg flex items-center justify-center gap-3">
-          <span className="text-2xl sm:text-3xl">🏛️</span>
+      <div className="relative z-10 text-center mb-6">
+        <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-400 bg-clip-text text-transparent drop-shadow-lg flex items-center justify-center gap-3">
+          <span className="text-3xl sm:text-4xl">🏛️</span>
           <span className="tracking-widest">SEEGA</span>
-          <span className="text-2xl sm:text-3xl">🏛️</span>
+          <span className="text-3xl sm:text-4xl">🏛️</span>
         </h1>
-        <p className="text-xs text-amber-400/80 mt-1 tracking-widest uppercase">Ancient Egyptian Strategy Game</p>
+        <p className="text-sm text-amber-400/80 mt-2 tracking-widest uppercase font-medium">Ancient Egyptian Strategy Game</p>
       </div>
 
       {/* コントロール */}
@@ -346,41 +382,47 @@ function App() {
 
       {/* スコアボード */}
       <div className="relative z-10 flex gap-4 sm:gap-8 mb-4">
-        <div className={`px-4 py-3 rounded-xl border transition-all duration-300 ${
+        <div className={`px-5 py-4 rounded-xl border-2 transition-all duration-300 ${
           gameState.currentPlayer === playerSide && !gameState.gameOver
-            ? 'bg-gradient-to-br from-amber-600/30 to-amber-800/30 border-amber-400/60 shadow-lg shadow-amber-500/20'
-            : 'bg-amber-900/30 border-amber-800/40'
+            ? 'bg-gradient-to-br from-amber-600/40 to-amber-800/40 border-amber-400/70 shadow-lg shadow-amber-500/30 scale-105'
+            : 'bg-amber-900/30 border-amber-800/50'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white to-gray-300 border-2 border-gray-400 shadow-md"></div>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white to-gray-300 border-2 border-gray-400 shadow-md flex items-center justify-center">
+              <span className="text-xs font-bold text-gray-600">☥</span>
+            </div>
             <div>
               <div className="text-xs text-amber-300 font-medium">あなた</div>
-              <div className="text-2xl font-bold text-white">{p1Count}</div>
+              <div className="text-3xl font-bold text-white">{p1Count}</div>
             </div>
           </div>
           {gameState.capturedBy.player1 > 0 && (
-            <div className="text-xs text-amber-400 mt-1 text-center">⚔️ {gameState.capturedBy.player1}個獲得</div>
+            <div className="text-xs text-amber-400 mt-2 text-center font-medium">⚔️ {gameState.capturedBy.player1}個獲得</div>
           )}
         </div>
 
         <div className="flex items-center">
-          <span className="text-amber-500 font-bold text-xl">VS</span>
+          <div className="bg-gradient-to-br from-amber-500 to-amber-700 px-3 py-2 rounded-lg shadow-md">
+            <span className="text-amber-100 font-bold text-lg">VS</span>
+          </div>
         </div>
 
-        <div className={`px-4 py-3 rounded-xl border transition-all duration-300 ${
+        <div className={`px-5 py-4 rounded-xl border-2 transition-all duration-300 ${
           gameState.currentPlayer === aiSide && !gameState.gameOver
-            ? 'bg-gradient-to-br from-gray-600/30 to-gray-800/30 border-gray-400/60 shadow-lg shadow-gray-500/20'
-            : 'bg-gray-900/30 border-gray-700/40'
+            ? 'bg-gradient-to-br from-gray-600/40 to-gray-800/40 border-gray-400/70 shadow-lg shadow-gray-500/30 scale-105'
+            : 'bg-gray-900/30 border-gray-700/50'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border-2 border-gray-500 shadow-md"></div>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border-2 border-gray-500 shadow-md flex items-center justify-center">
+              <span className="text-xs font-bold text-gray-300">☥</span>
+            </div>
             <div>
               <div className="text-xs text-gray-300 font-medium">AI</div>
-              <div className="text-2xl font-bold text-white">{p2Count}</div>
+              <div className="text-3xl font-bold text-white">{p2Count}</div>
             </div>
           </div>
           {gameState.capturedBy.player2 > 0 && (
-            <div className="text-xs text-gray-400 mt-1 text-center">⚔️ {gameState.capturedBy.player2}個獲得</div>
+            <div className="text-xs text-gray-400 mt-2 text-center font-medium">⚔️ {gameState.capturedBy.player2}個獲得</div>
           )}
         </div>
       </div>
@@ -402,31 +444,57 @@ function App() {
       )}
 
       {/* メッセージ */}
-      <div className={`relative z-10 mb-4 px-5 py-3 rounded-xl text-center font-medium text-sm transition-all duration-300 max-w-sm ${
+      <div className={`relative z-10 mb-4 px-6 py-4 rounded-xl text-center font-medium text-sm transition-all duration-300 max-w-md ${
         gameState.gameOver
           ? gameState.winner === playerSide
-            ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-200 border border-green-400/50 shadow-lg shadow-green-500/20'
-            : 'bg-gradient-to-r from-red-500/20 to-rose-500/20 text-red-200 border border-red-400/50 shadow-lg shadow-red-500/20'
+            ? 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 text-green-100 border-2 border-green-400/60 shadow-lg shadow-green-500/30'
+            : 'bg-gradient-to-r from-red-500/30 to-rose-500/30 text-red-100 border-2 border-red-400/60 shadow-lg shadow-red-500/30'
           : gameState.phase === 'placing'
-            ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 text-blue-200 border border-blue-400/50'
-            : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-200 border border-amber-400/50'
+            ? 'bg-gradient-to-r from-blue-500/25 to-indigo-500/25 text-blue-100 border-2 border-blue-400/50 shadow-md'
+            : 'bg-gradient-to-r from-amber-500/25 to-orange-500/25 text-amber-100 border-2 border-amber-400/50 shadow-md'
       }`}>
-        {gameState.gameOver
-          ? (gameState.winner === playerSide ? '🏆 勝利！見事です！' : '💀 敗北...次は勝ちましょう')
-          : isThinking
-            ? '🤔 AIが戦略を練っています...'
-            : gameState.canCapture
-              ? `⚡ 連続キャプチャ！もう一度動けます`
-              : gameState.message}
+        <div className="flex items-center justify-center gap-2">
+          {gameState.gameOver ? (
+            <>
+              <span className="text-2xl">{gameState.winner === playerSide ? '🏆' : '💀'}</span>
+              <span className="text-lg font-bold">
+                {gameState.winner === playerSide ? '勝利！見事です！' : '敗北...次は勝ちましょう'}
+              </span>
+            </>
+          ) : isThinking ? (
+            <>
+              <span className="text-xl animate-spin">🤔</span>
+              <span>AIが戦略を練っています...</span>
+            </>
+          ) : gameState.canCapture ? (
+            <>
+              <span className="text-xl animate-pulse">⚡</span>
+              <span className="font-bold">連続キャプチャ！もう一度動けます</span>
+            </>
+          ) : (
+            <>
+              <span className="text-xl">
+                {gameState.phase === 'placing' ? '📍' : '🎯'}
+              </span>
+              <span>{gameState.message}</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 盤面 */}
-      <div className="relative z-10">
-        <div className="absolute -inset-2 bg-gradient-to-br from-amber-600/30 via-yellow-600/20 to-amber-700/30 rounded-2xl blur-sm"></div>
-        <div className="relative bg-gradient-to-br from-amber-800 to-amber-900 p-3 sm:p-4 rounded-xl shadow-2xl border-2 border-amber-600/50">
-          <div className="absolute inset-1 rounded-lg border border-amber-500/20 pointer-events-none"></div>
+      <div className="relative z-10 my-4">
+        {/* 外側の装飾 */}
+        <div className="absolute -inset-3 bg-gradient-to-br from-amber-500/20 via-yellow-500/10 to-amber-600/20 rounded-3xl blur-md"></div>
+        <div className="absolute -inset-1 bg-gradient-to-br from-amber-600/40 to-amber-800/40 rounded-2xl"></div>
+        
+        {/* 盤面本体 */}
+        <div className="relative bg-gradient-to-br from-amber-900 via-amber-800 to-amber-900 p-4 sm:p-5 rounded-xl shadow-2xl border-2 border-amber-600/60">
+          {/* 内側の装飾 */}
+          <div className="absolute inset-2 rounded-lg border border-amber-500/30 pointer-events-none"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-amber-700/10 to-transparent rounded-xl pointer-events-none"></div>
 
-          <div className="grid gap-0" style={{ gridTemplateColumns: `repeat(5, 1fr)` }}>
+          <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(5, 1fr)` }}>
             {Array.from({ length: 25 }, (_, idx) => {
               const row = Math.floor(idx / 5);
               const col = idx % 5;
@@ -445,63 +513,70 @@ function App() {
                   className={`
                     w-14 h-14 sm:w-16 sm:h-16 relative cursor-pointer
                     flex items-center justify-center
-                    transition-all duration-200 active:scale-95
+                    transition-all duration-200 active:scale-90
                     ${isCenterCell
-                      ? 'bg-gradient-to-br from-amber-600/40 to-amber-700/40'
-                      : 'bg-gradient-to-br from-amber-700/30 to-amber-800/30'}
-                    ${isSelected ? 'ring-2 ring-yellow-300 bg-yellow-500/20' : ''}
-                    ${isValidMove && !cell ? 'bg-green-500/20 hover:bg-green-500/30' : ''}
-                    ${isValidMove && cell ? 'bg-red-500/20 hover:bg-red-500/30' : ''}
-                    ${canPlaceHere && !cell ? 'bg-blue-400/15 hover:bg-blue-400/30' : ''}
-                    ${isLastMove && !isSelected ? 'ring-1 ring-amber-400/40' : ''}
-                    ${!cell && !isValidMove && !canPlaceHere ? 'hover:bg-amber-600/20' : ''}
+                      ? 'bg-gradient-to-br from-amber-700/50 to-amber-800/50'
+                      : 'bg-gradient-to-br from-amber-800/40 to-amber-900/40'}
+                    ${isSelected ? 'ring-2 ring-yellow-300 bg-yellow-500/30 shadow-lg shadow-yellow-500/50' : ''}
+                    ${isValidMove && !cell ? 'bg-green-500/30 hover:bg-green-500/40 shadow-inner shadow-green-400/30' : ''}
+                    ${isValidMove && cell ? 'bg-red-500/30 hover:bg-red-500/40 shadow-inner shadow-red-400/30' : ''}
+                    ${canPlaceHere && !cell ? 'bg-blue-400/20 hover:bg-blue-400/35 shadow-inner shadow-blue-400/20' : ''}
+                    ${isLastMove && !isSelected ? 'ring-1 ring-amber-400/50 bg-amber-500/20' : ''}
+                    ${!cell && !isValidMove && !canPlaceHere ? 'hover:bg-amber-700/30' : ''}
                   `}
                 >
-                  <div className="absolute inset-0 border border-amber-600/20 pointer-events-none"></div>
+                  {/* セルの枠線 */}
+                  <div className="absolute inset-0 border border-amber-600/30 pointer-events-none"></div>
 
+                  {/* 中央マーカー */}
                   {isCenterCell && !cell && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-4 h-4 rounded-full border-2 border-amber-400/40 flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400/50"></div>
+                      <div className="w-5 h-5 rounded-full border-2 border-amber-400/50 flex items-center justify-center bg-amber-500/10">
+                        <div className="w-2 h-2 rounded-full bg-amber-400/60"></div>
                       </div>
                     </div>
                   )}
 
+                  {/* 駒 */}
                   {cell && (
                     <div className={`
                       w-11 h-11 sm:w-13 sm:h-13 rounded-full shadow-xl flex items-center justify-center
                       transition-all duration-300 relative
                       ${cell === 'player1'
-                        ? 'bg-gradient-to-br from-white via-gray-100 to-gray-300 border-2 border-gray-200 shadow-white/20'
-                        : 'bg-gradient-to-br from-gray-600 via-gray-800 to-black border-2 border-gray-500 shadow-black/40'}
-                      ${isSelected ? 'scale-110 shadow-2xl ring-2 ring-yellow-300/50' : ''}
+                        ? 'bg-gradient-to-br from-white via-gray-100 to-gray-300 border-2 border-gray-200 shadow-white/30'
+                        : 'bg-gradient-to-br from-gray-600 via-gray-800 to-black border-2 border-gray-500 shadow-black/50'}
+                      ${isSelected ? 'scale-115 shadow-2xl ring-2 ring-yellow-300/60' : ''}
                       ${isAnimating ? 'animate-bounce' : ''}
+                      ${isLastMove ? 'ring-1 ring-amber-400/40' : ''}
                     `}>
+                      {/* 駒のハイライト */}
                       <div className={`absolute inset-1 rounded-full ${
                         cell === 'player1'
-                          ? 'bg-gradient-to-br from-white/50 to-transparent'
-                          : 'bg-gradient-to-br from-gray-400/30 to-transparent'
+                          ? 'bg-gradient-to-br from-white/60 to-transparent'
+                          : 'bg-gradient-to-br from-gray-400/40 to-transparent'
                       }`}></div>
+                      {/* 中央の模様 */}
                       <div className={`w-3 h-3 sm:w-4 sm:h-4 rounded-full flex items-center justify-center ${
                         cell === 'player1'
                           ? 'bg-gradient-to-br from-gray-200 to-gray-400'
                           : 'bg-gradient-to-br from-gray-500 to-gray-700'
                       }`}>
-                        <span className={`text-[6px] sm:text-[8px] font-bold ${
+                        <span className={`text-[7px] sm:text-[9px] font-bold ${
                           cell === 'player1' ? 'text-gray-500' : 'text-gray-300'
                         }`}>☥</span>
                       </div>
                     </div>
                   )}
 
+                  {/* 有効手のインジケータ */}
                   {isValidMove && !cell && (
-                    <div className="w-4 h-4 rounded-full bg-green-400/60 animate-pulse shadow-lg shadow-green-400/30"></div>
+                    <div className="w-5 h-5 rounded-full bg-green-400/70 animate-pulse shadow-lg shadow-green-400/50"></div>
                   )}
                   {isValidMove && cell && (
-                    <div className="absolute inset-1 rounded-full border-2 border-red-400/60 animate-pulse"></div>
+                    <div className="absolute inset-1.5 rounded-full border-3 border-red-400/70 animate-pulse"></div>
                   )}
                   {canPlaceHere && !cell && gameState.phase === 'placing' && (
-                    <div className="w-3 h-3 rounded-full bg-blue-400/30"></div>
+                    <div className="w-4 h-4 rounded-full bg-blue-400/40 animate-pulse"></div>
                   )}
                 </div>
               );

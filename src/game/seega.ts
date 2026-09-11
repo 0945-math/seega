@@ -23,6 +23,7 @@ export interface GameState {
   board: Board;
   currentPlayer: Player;
   phase: Phase;
+  piecesPlacedThisTurn: number;
   totalPlaced: { player1: number; player2: number };
   selectedPos: Position | null;
   validMoves: Position[];
@@ -45,13 +46,14 @@ export function createInitialState(): GameState {
     board,
     currentPlayer: 'player1',
     phase: 'placing',
+    piecesPlacedThisTurn: 0,
     totalPlaced: { player1: 0, player2: 0 },
     selectedPos: null,
     validMoves: [],
     capturedBy: { player1: 0, player2: 0 },
     gameOver: false,
     winner: null,
-    message: '配置フェーズ：あなたの駒を置いてください',
+    message: '配置フェーズ：あなたの駒を2個置いてください',
     canCapture: false,
     moveHistory: [],
     lastMove: null,
@@ -79,6 +81,7 @@ export function placePiece(state: GameState, pos: Position): GameState {
 
   const newTotalPlaced = { ...state.totalPlaced };
   newTotalPlaced[state.currentPlayer]++;
+  const newPlacedThisTurn = state.piecesPlacedThisTurn + 1;
 
   const nextPlayer: Player = state.currentPlayer === 'player1' ? 'player2' : 'player1';
   const allPlaced = newTotalPlaced.player1 >= PIECES_PER_PLAYER && newTotalPlaced.player2 >= PIECES_PER_PLAYER;
@@ -89,9 +92,13 @@ export function placePiece(state: GameState, pos: Position): GameState {
   if (allPlaced) {
     newPhase = 'moving';
     newMessage = '移動フェーズ開始！先手の最初の一手は中央へ';
+  } else if (newPlacedThisTurn >= 2) {
+    newMessage = `${nextPlayer === 'player1' ? 'あなた' : 'AI'}の駒を2個置いてください`;
   } else {
-    newMessage = `${nextPlayer === 'player1' ? 'あなた' : 'AI'}の番です`;
+    newMessage = 'あと1個置いてください';
   }
+
+  const shouldSwitchTurn = newPlacedThisTurn >= 2 || allPlaced;
 
   const newMoveHistory = [...state.moveHistory, {
     type: 'place' as const,
@@ -103,7 +110,8 @@ export function placePiece(state: GameState, pos: Position): GameState {
     ...state,
     board: newBoard,
     totalPlaced: newTotalPlaced,
-    currentPlayer: nextPlayer,
+    piecesPlacedThisTurn: shouldSwitchTurn ? 0 : newPlacedThisTurn,
+    currentPlayer: shouldSwitchTurn ? nextPlayer : state.currentPlayer,
     phase: newPhase,
     message: newMessage || state.message,
     selectedPos: null,
@@ -202,7 +210,7 @@ export function movePiece(state: GameState, from: Position, to: Position): GameS
   if (gameOver) {
     message = player === 'player1' ? '🎉 あなたの勝ち！' : '😢 AIの勝ち...';
   } else if (canContinueCapture) {
-    message = `連続キャプチャ！もう一度移動できます`;
+    message = `連続キャプチャ！${captures.length}個取った！もう一度移動できます`;
   } else {
     const nextPlayer: Player = player === 'player1' ? 'player2' : 'player1';
     message = nextPlayer === 'player1' ? 'あなたの番です' : 'AIの番です';
@@ -339,32 +347,42 @@ function evaluate(board: Board, aiPlayer: Player): number {
   return score;
 }
 
-function getAIPlacement(state: GameState): Position {
+function getAIPlacement(state: GameState): Position[] {
+  const placements: Position[] = [];
+  let currentBoard = state.board.map(row => [...row]);
   const aiPlayer = state.currentPlayer;
   const center = Math.floor(BOARD_SIZE / 2);
-  let bestPos: Position | null = null;
-  let bestScore = -Infinity;
 
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (state.board[r][c] !== null) continue;
-      if (r === center && c === center) continue;
+  for (let i = 0; i < 2; i++) {
+    let bestPos: Position | null = null;
+    let bestScore = -Infinity;
 
-      const testBoard = state.board.map(row => [...row]);
-      testBoard[r][c] = aiPlayer;
-      const score = evaluate(testBoard, aiPlayer);
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (currentBoard[r][c] !== null) continue;
+        if (r === center && c === center) continue;
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestPos = { row: r, col: c };
+        const testBoard = currentBoard.map(row => [...row]);
+        testBoard[r][c] = aiPlayer;
+        const score = evaluate(testBoard, aiPlayer);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestPos = { row: r, col: c };
+        }
       }
+    }
+
+    if (bestPos) {
+      placements.push(bestPos);
+      currentBoard[bestPos.row][bestPos.col] = aiPlayer;
     }
   }
 
-  return bestPos || { row: 0, col: 0 };
+  return placements;
 }
 
-function getAIMove(state: GameState, depth: number = 3): { from: Position; to: Position } | null {
+function getAIMove(state: GameState, depth: number = 4): { from: Position; to: Position } | null {
   const aiPlayer = state.currentPlayer;
   const center = Math.floor(BOARD_SIZE / 2);
   
